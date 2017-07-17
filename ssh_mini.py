@@ -3,6 +3,17 @@ from contextlib import closing
 
 
 class BinarySshPacket:
+    @classmethod
+    def from_bytes(cls, flow):
+        packet_len = int.from_bytes(flow[0:4], 'big')
+        padding_length = int.from_bytes(flow[4:5], 'big')
+        payload = flow[5:(5 + packet_len - padding_length - 1)]
+        padding = flow[(5 + packet_len - padding_length - 1):(5 + packet_len - 1)]
+        mac = flow[(5 + packet_len - 1):]
+
+        # We only know how to decode KEI messages
+        return KeiSshPacket.from_bytes(payload)
+
     def _to_bytes(self, payload):
         # Padding
         _CIPHER_BLOCK_SIZE = 8
@@ -24,6 +35,44 @@ class BinarySshPacket:
 
 
 class KeiSshPacket(BinarySshPacket):
+    SSH_MSG_KEXINIT = 0x14
+
+    @classmethod
+    def from_bytes(cls, flow):
+        if not flow[0] == cls.SSH_MSG_KEXINIT:
+            raise Exception("Message is not a KEXINIT message")
+        cookie = flow[1:17]
+        i = 17
+
+        def extract_string(start):
+            strlen = int.from_bytes(flow[start:start + 4], 'big')
+            return flow[(start + 4):(start + 4 + strlen)]
+
+        kex_algo = extract_string(i)
+        i += len(kex_algo)
+        server_host_key_algo = extract_string(i)
+        i += len(kex_algo)
+        encryption_algo_ctos = extract_string(i)
+        i += len(kex_algo)
+        encryption_algo_stoc = extract_string(i)
+        i += len(kex_algo)
+        mac_algo_ctos = extract_string(i)
+        i += len(kex_algo)
+        mac_algo_stoc = extract_string(i)
+        i += len(kex_algo)
+        compression_algo_ctos = extract_string(i)
+        i += len(kex_algo)
+        compression_algo_stoc = extract_string(i)
+        i += len(kex_algo)
+        languages_ctos = extract_string(i)
+        i += len(kex_algo)
+        languages_stoc = extract_string(i)
+        i += len(kex_algo)
+
+        return cls(cookie, kex_algo, server_host_key_algo, encryption_algo_ctos, encryption_algo_stoc,
+                   mac_algo_ctos, mac_algo_stoc, compression_algo_ctos, compression_algo_stoc,
+                   languages_ctos, languages_stoc)
+
     def __init__(self, cookie=b"\x02" * 16,
                  kex_algo=b"curve25519-sha256", server_host_key_algo=b"ecdsa-sha2-nistp256-cert-v01@openssh.com",
                  encryption_algo_ctos=b"aes128-ctr", encryption_algo_stoc=b"aes128-ctr",
@@ -43,7 +92,7 @@ class KeiSshPacket(BinarySshPacket):
         self.languages_stoc = languages_stoc
 
     def to_bytes(self):
-        message = b"\x14"  # Message code: Key Exchange Init
+        message = self.SSH_MSG_KEXINIT.to_bytes(1, 'big')
         message += self.cookie
         message += len(self.kex_algo).to_bytes(4, 'big') + self.kex_algo
         message += len(self.server_host_key_algo).to_bytes(4, 'big') + self.server_host_key_algo
@@ -79,4 +128,5 @@ with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
     s_w.flush()
     print("Sent %s" % message)
     data = s_r.read(32)
+    data = BinarySshPacket.from_bytes(data)
     print("Found data: %s" % data)
