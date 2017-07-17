@@ -1,5 +1,8 @@
+import logging
 import socket
 from contextlib import closing
+
+import click
 
 
 class BinarySshPacket:
@@ -110,23 +113,37 @@ class KeiSshPacket(BinarySshPacket):
         return self._to_bytes(message)
 
 
-with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-    s.connect(("delos.imag.fr", 22))
-    print("connexion established")
+@click.command()
+@click.argument("server_name")
+@click.option("-p", required=False, default=22)
+def main(server_name, port=22):
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.connect((server_name, port))
+        s_w = s.makefile(mode="wb")
+        s_r = s.makefile(mode="rb")
+        logging.info("Connexion to %s:%d established" % (server_name, port))
 
-    s_w = s.makefile(mode="wb")
-    s_r = s.makefile(mode="rb")
+        logging.info("Send version")
+        s_w.write(b"SSH-2.0-pyhton_tim&henry_1.0\r\n")
+        s_w.flush()
 
-    print("Sending version")
-    s_w.write(b"SSH-2.0-pyhton_tim&henry_1.0\r\n")
-    s_w.flush()
-    data = s_r.readline()
-    print("Found server version: %s" % data.decode("utf-8"))
+        logging.info("Waiting for server version...")
+        first_line = s_r.readline()
+        logging.info("Found server version: %s" % first_line.decode("utf-8")[:-2])
 
-    message = KeiSshPacket().to_bytes()
-    s_w.write(message)
-    s_w.flush()
-    print("Sent %s" % message)
-    data = s_r.read(32)
-    data = BinarySshPacket.from_bytes(data)
-    print("Found data: %s" % data)
+        logging.info("Send KEI message")
+        message = KeiSshPacket().to_bytes()
+        s_w.write(message)
+        s_w.flush()
+
+        logging.info("Waiting for server KEI...")
+        data = s_r.read(32)
+        kei = BinarySshPacket.from_bytes(data)
+        if not isinstance(kei, KeiSshPacket):
+            raise Exception("First packet is not a KEI packet")
+        logging.info("Found server KEI")
+
+
+if __name__ == "__main__":
+    logging.basicConfig(format="[%(levelname)s] %(message)s", level=logging.INFO)
+    main()
