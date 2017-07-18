@@ -1,6 +1,5 @@
 import logging
 import socket
-from contextlib import closing
 
 import click
 
