@@ -29,26 +29,37 @@ class BinarySshPacket:
         return cls._msg_types[msg_type].from_bytes(payload)
 
     @classmethod
+    def _field_from_bytes(cls, flow):
+        field_len = int.from_bytes(flow[:4], "big")
+        field = flow[4:(4 + field_len)]
+        return field_len, field
+
+    @classmethod
+    def _field_to_bytes(cls, value):
+        return len(value).to_bytes(4, "big") + value
+
+    @classmethod
     def _list_from_bytes(cls, flow):
-        list_len = int.from_bytes(flow[:4], "big")
-        list_ = flow[4:(4 + list_len)].decode("utf-8").split(",")
+        list_len, list_ = cls._field_from_bytes(flow)
+        list_ = list_.decode("utf-8").split(",")
         return list_len, list_
 
     @classmethod
     def _list_to_bytes(cls, value):
         value = ",".join(value)
         value = value.encode("utf-8")
-        return len(value).to_bytes(4, "big") + value
+        return cls._field_to_bytes(value)
 
     @classmethod
     def _mpint_from_bytes(cls, flow):
-        mpi_len = int.from_bytes(flow[1:5], 'big')
-        mpi = int.from_bytes(flow[5:(5 + mpi_len)], 'big')
+        mpi_len, mpi = cls._field_from_bytes(flow)
+        mpi = int.from_bytes(mpi, 'big')
         return mpi_len, mpi
 
     @classmethod
-    def _mpint_to_bytes(cls, value):
-        mpi_len = (value.bit_length() + 7) // 8
+    def _mpint_to_bytes(cls, value, mpi_len=None):
+        if mpi_len is None:
+            mpi_len = (value.bit_length() + 7) // 8
         mpi = value.to_bytes(mpi_len, 'big')
         return mpi_len.to_bytes(4, 'big') + mpi
 
