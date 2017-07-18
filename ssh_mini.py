@@ -6,6 +6,8 @@ import click
 
 class BinarySshPacket:
     SSH_MSG_KEXINIT = 0x14
+    SSH_MSG_KEXDH_INIT = 0x1e
+    SSH_MSG_KEXDH_REPLY = 0x1f
 
     msg_type = None  # Should be filled by subclasses
 
@@ -173,6 +175,38 @@ class KexinitSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metacla
         return self._to_bytes(message)
 
 
+class KexSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
+    msg_type = BinarySshPacket.SSH_MSG_KEXDH_INIT
+
+    def __init__(self, e):
+        super(KexSshPacket, self).__init__()
+        self.e = e
+
+    def to_bytes(self):
+        message = self._mpint_to_bytes(self.e, 32)
+        return self._to_bytes(message)
+
+
+class KexdhReplySshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
+    msg_type = BinarySshPacket.SSH_MSG_KEXDH_REPLY
+
+    @classmethod
+    def from_bytes(cls, flow):
+        i = 0
+        size, server_key = cls._field_from_bytes(flow[i:])
+        i += size + 4
+        size, f = cls._mpint_from_bytes(flow[i:])
+        i += size + 4
+        _, f_sig = cls._field_from_bytes(flow[i:])
+        return cls(server_key, f, f_sig)
+
+    def __init__(self, server_key, f, f_sig):
+        super(KexdhReplySshPacket, self).__init__()
+        self.server_key = server_key
+        self.f = f
+        self.f_sig = f_sig
+
+
 class SshConnection:
     logger = logging.getLogger(__name__)
 
@@ -189,6 +223,7 @@ class SshConnection:
         # Start SSH connection
         self._version()
         self._kei()
+        self._kexdh()
 
         return self
 
@@ -223,6 +258,17 @@ class SshConnection:
         if not isinstance(kei, KexinitSshPacket):
             raise Exception("First packet is not a KEI packet")
         logging.info("Found server KEI")
+
+    def _kexdh(self):
+        self.logger.info("Send KEXDH_INIT message")
+        message = KexSshPacket(0x17)  # TODO: select a correct random 'e' value
+        self.write(message.to_bytes())
+
+        self.logger.info("Waiting for server's KEXDH_REPLY")
+        kex = self.recv_ssh_packet()
+        if not isinstance(kex, KexdhReplySshPacket):
+            raise Exception("First packet is not a KEXDH_REPLY packet")
+        logging.info("Found server KEXDH_REPLY")
 
     def write(self, content):
         if isinstance(content, str):
