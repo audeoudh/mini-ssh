@@ -113,35 +113,66 @@ class KeiSshPacket(BinarySshPacket):
         return self._to_bytes(message)
 
 
-@click.command()
-@click.argument("server_name")
-@click.option("-p", required=False, default=22)
-def main(server_name, port=22):
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.connect((server_name, port))
-        s_w = s.makefile(mode="wb")
-        s_r = s.makefile(mode="rb")
-        logging.info("Connexion to %s:%d established" % (server_name, port))
+class SshConnection:
+    logger = logging.getLogger(__name__)
 
-        logging.info("Send version")
-        s_w.write(b"SSH-2.0-pyhton_tim&henry_1.0\r\n")
-        s_w.flush()
+    def __init__(self, server_name, port=22):
+        self.server_name = server_name
+        self.port = port
 
-        logging.info("Waiting for server version...")
-        first_line = s_r.readline()
-        logging.info("Found server version: %s" % first_line.decode("utf-8")[:-2])
+    def __enter__(self):
+        # init TCP Channel
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.connect((self.server_name, self.port))
+        self.logger.info("Connexion to %s:%d established" % (self.server_name, self.port))
+        self.socket_w = self.socket.makefile(mode="wb")
+        self.socket_r = self.socket.makefile(mode="rb")
 
-        logging.info("Send KEI message")
+        # Start SSH connection
+        self._version()
+        self._kei()
+
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.socket.close()
+
+    def _version(self):
+        self.logger.info("Send version")
+        self.socket_w.write(b"SSH-2.0-pyhton_tim&henry_1.0\r\n")
+        self.socket_w.flush()
+
+        self.logger.info("Waiting for server version...")
+        version = self.socket_r.readline().decode("utf-8")[:-2]
+        self.logger.info("Found server version: %s" % version)
+        return version
+
+    def _kei(self):
+        self.logger.info("Send KEI message")
         message = KeiSshPacket().to_bytes()
-        s_w.write(message)
-        s_w.flush()
+        self.socket_w.write(message)
+        self.socket_w.flush()
 
-        logging.info("Waiting for server KEI...")
-        data = s_r.read(32)
+        self.logger.info("Waiting for server KEI...")
+        data = self.socket_r.read()
         kei = BinarySshPacket.from_bytes(data)
         if not isinstance(kei, KeiSshPacket):
             raise Exception("First packet is not a KEI packet")
         logging.info("Found server KEI")
+
+    def write(self, content):
+        if isinstance(content, str):
+            self.socket_w.write(content.encode("utf-8"))
+        else:
+            self.socket_w.write(content)
+
+
+@click.command()
+@click.argument("server_name")
+@click.option("-p", required=False, default=22)
+def main(server_name, p=22):
+    with SshConnection(server_name, p) as sshc:
+        sshc.write("foo")
 
 
 if __name__ == "__main__":
