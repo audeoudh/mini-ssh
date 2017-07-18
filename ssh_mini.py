@@ -15,7 +15,18 @@ class BinarySshPacket:
         mac = flow[(5 + packet_len - 1):]
 
         # We only know how to decode KEI messages
-        return KeiSshPacket.from_bytes(payload)
+        return KexinitSshPacket.from_bytes(payload)
+
+    @classmethod
+    def _list_from_bytes(cls, flow):
+        list_len = int.from_bytes(flow[:4], "big")
+        return list_len, flow[4:(4 + list_len)].decode("utf-8").split(",")
+
+    @classmethod
+    def _list_to_bytes(cls, value):
+        value = ",".join(value)
+        value = value.encode("utf-8")
+        return len(value).to_bytes(4, "big") + value
 
     def _to_bytes(self, payload):
         # Padding
@@ -37,7 +48,7 @@ class BinarySshPacket:
         return packet
 
 
-class KeiSshPacket(BinarySshPacket):
+class KexinitSshPacket(BinarySshPacket):
     SSH_MSG_KEXINIT = 0x14
 
     @classmethod
@@ -46,42 +57,57 @@ class KeiSshPacket(BinarySshPacket):
             raise Exception("Message is not a KEXINIT message")
         cookie = flow[1:17]
         i = 17
-
-        def extract_string(start):
-            strlen = int.from_bytes(flow[start:start + 4], 'big')
-            return flow[(start + 4):(start + 4 + strlen)]
-
-        kex_algo = extract_string(i)
-        i += len(kex_algo)
-        server_host_key_algo = extract_string(i)
-        i += len(kex_algo)
-        encryption_algo_ctos = extract_string(i)
-        i += len(kex_algo)
-        encryption_algo_stoc = extract_string(i)
-        i += len(kex_algo)
-        mac_algo_ctos = extract_string(i)
-        i += len(kex_algo)
-        mac_algo_stoc = extract_string(i)
-        i += len(kex_algo)
-        compression_algo_ctos = extract_string(i)
-        i += len(kex_algo)
-        compression_algo_stoc = extract_string(i)
-        i += len(kex_algo)
-        languages_ctos = extract_string(i)
-        i += len(kex_algo)
-        languages_stoc = extract_string(i)
-        i += len(kex_algo)
+        list_len, kex_algo = cls._list_from_bytes(flow[i:])
+        i += list_len + 4
+        list_len, server_host_key_algo = cls._list_from_bytes(flow[i:])
+        i += list_len + 4
+        list_len, encryption_algo_ctos = cls._list_from_bytes(flow[i:])
+        i += list_len + 4
+        list_len, encryption_algo_stoc = cls._list_from_bytes(flow[i:])
+        i += list_len + 4
+        list_len, mac_algo_ctos = cls._list_from_bytes(flow[i:])
+        i += list_len + 4
+        list_len, mac_algo_stoc = cls._list_from_bytes(flow[i:])
+        i += list_len + 4
+        list_len, compression_algo_ctos = cls._list_from_bytes(flow[i:])
+        i += list_len + 4
+        list_len, compression_algo_stoc = cls._list_from_bytes(flow[i:])
+        i += list_len + 4
+        list_len, languages_ctos = cls._list_from_bytes(flow[i:])
+        i += list_len + 4
+        _, languages_stoc = cls._list_from_bytes(flow[i:])
 
         return cls(cookie, kex_algo, server_host_key_algo, encryption_algo_ctos, encryption_algo_stoc,
                    mac_algo_ctos, mac_algo_stoc, compression_algo_ctos, compression_algo_stoc,
                    languages_ctos, languages_stoc)
 
     def __init__(self, cookie=b"\x02" * 16,
-                 kex_algo=b"curve25519-sha256", server_host_key_algo=b"ecdsa-sha2-nistp256-cert-v01@openssh.com",
-                 encryption_algo_ctos=b"aes128-ctr", encryption_algo_stoc=b"aes128-ctr",
-                 mac_algo_ctos=b"hmac-sha2-512", mac_algo_stoc=b"hmac-sha2-512",
-                 compression_algo_ctos=b"none", compression_algo_stoc=b"none",
-                 languages_ctos=b"", languages_stoc=b""):
+                 kex_algo=None, server_host_key_algo=None,
+                 encryption_algo_ctos=None, encryption_algo_stoc=None,
+                 mac_algo_ctos=None, mac_algo_stoc=None,
+                 compression_algo_ctos=None, compression_algo_stoc=None,
+                 languages_ctos=None, languages_stoc=None):
+        super(KexinitSshPacket, self).__init__()
+        if kex_algo is None:
+            kex_algo = ["curve25519-sha256@libssh.org"]
+        if server_host_key_algo is None:
+            server_host_key_algo = ["ssh-rsa"]
+        if encryption_algo_ctos is None:
+            encryption_algo_ctos = ["laes128-ctr", "aes192-ctr"]
+        if encryption_algo_stoc is None:
+            encryption_algo_stoc = ["laes128-ctr", "aes192-ctr"]
+        if mac_algo_ctos is None:
+            mac_algo_ctos = ["umac-64-etm@openssh.com"]
+        if mac_algo_stoc is None:
+            mac_algo_stoc = ["umac-64-etm@openssh.com"]
+        if compression_algo_ctos is None:
+            compression_algo_ctos = ["none"]
+        if compression_algo_stoc is None:
+            compression_algo_stoc = ["none"]
+        if languages_ctos is None:
+            languages_ctos = []
+        if languages_stoc is None:
+            languages_stoc = []
         self.cookie = cookie
         self.kex_algo = kex_algo
         self.server_host_key_algo = server_host_key_algo
@@ -97,16 +123,16 @@ class KeiSshPacket(BinarySshPacket):
     def to_bytes(self):
         message = self.SSH_MSG_KEXINIT.to_bytes(1, 'big')
         message += self.cookie
-        message += len(self.kex_algo).to_bytes(4, 'big') + self.kex_algo
-        message += len(self.server_host_key_algo).to_bytes(4, 'big') + self.server_host_key_algo
-        message += len(self.encryption_algo_ctos).to_bytes(4, 'big') + self.encryption_algo_ctos
-        message += len(self.encryption_algo_stoc).to_bytes(4, 'big') + self.encryption_algo_stoc
-        message += len(self.mac_algo_ctos).to_bytes(4, 'big') + self.mac_algo_ctos
-        message += len(self.mac_algo_stoc).to_bytes(4, 'big') + self.mac_algo_stoc
-        message += len(self.compression_algo_ctos).to_bytes(4, 'big') + self.compression_algo_ctos
-        message += len(self.compression_algo_stoc).to_bytes(4, 'big') + self.compression_algo_stoc
-        message += len(self.languages_ctos).to_bytes(4, 'big') + self.languages_ctos
-        message += len(self.languages_stoc).to_bytes(4, 'big') + self.languages_stoc
+        message += self._list_to_bytes(self.kex_algo)
+        message += self._list_to_bytes(self.server_host_key_algo)
+        message += self._list_to_bytes(self.encryption_algo_ctos)
+        message += self._list_to_bytes(self.encryption_algo_stoc)
+        message += self._list_to_bytes(self.mac_algo_ctos)
+        message += self._list_to_bytes(self.mac_algo_stoc)
+        message += self._list_to_bytes(self.compression_algo_ctos)
+        message += self._list_to_bytes(self.compression_algo_stoc)
+        message += self._list_to_bytes(self.languages_ctos)
+        message += self._list_to_bytes(self.languages_stoc)
         message += b"\x00"  # KEX first packet follows: FALSE
         message += int(0).to_bytes(4, 'big')  # reserved
 
@@ -149,14 +175,14 @@ class SshConnection:
 
     def _kei(self):
         self.logger.info("Send KEI message")
-        message = KeiSshPacket().to_bytes()
-        self.socket_w.write(message)
+        message = KexinitSshPacket()
+        self.socket_w.write(message.to_bytes())
         self.socket_w.flush()
 
         self.logger.info("Waiting for server KEI...")
         data = self.socket_r.read()
         kei = BinarySshPacket.from_bytes(data)
-        if not isinstance(kei, KeiSshPacket):
+        if not isinstance(kei, KexinitSshPacket):
             raise Exception("First packet is not a KEI packet")
         logging.info("Found server KEI")
 
