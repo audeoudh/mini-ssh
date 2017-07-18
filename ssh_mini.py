@@ -31,13 +31,26 @@ class BinarySshPacket:
     @classmethod
     def _list_from_bytes(cls, flow):
         list_len = int.from_bytes(flow[:4], "big")
-        return list_len, flow[4:(4 + list_len)].decode("utf-8").split(",")
+        list_ = flow[4:(4 + list_len)].decode("utf-8").split(",")
+        return list_len, list_
 
     @classmethod
     def _list_to_bytes(cls, value):
         value = ",".join(value)
         value = value.encode("utf-8")
         return len(value).to_bytes(4, "big") + value
+
+    @classmethod
+    def _mpint_from_bytes(cls, flow):
+        mpi_len = int.from_bytes(flow[1:5], 'big')
+        mpi = int.from_bytes(flow[5:(5 + mpi_len)], 'big')
+        return mpi_len, mpi
+
+    @classmethod
+    def _mpint_to_bytes(cls, value):
+        mpi_len = (value.bit_length() + 7) // 8
+        mpi = value.to_bytes(mpi_len, 'big')
+        return mpi_len.to_bytes(4, 'big') + mpi
 
     def _to_bytes(self, payload):
         payload = self.msg_type.to_bytes(1, 'big') + payload
