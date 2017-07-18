@@ -201,7 +201,7 @@ class SshConnection:
         self.write(message.to_bytes())
 
         self.logger.info("Waiting for server KEI...")
-        data = self.socket_r.read()
+        data = self.read()
         kei = BinarySshPacket.from_bytes(data)
         if not isinstance(kei, KexinitSshPacket):
             raise Exception("First packet is not a KEI packet")
@@ -213,6 +213,12 @@ class SshConnection:
         else:
             self.socket_w.write(content)
         self.socket_w.flush()
+
+    def read(self):
+        data = self.socket_r.read()
+        if data == b"":
+            raise Exception("No more data from TCP stream")
+        return data
 
 
 @click.command()
