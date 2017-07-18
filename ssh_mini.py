@@ -5,16 +5,28 @@ import click
 
 
 class BinarySshPacket:
+    SSH_MSG_KEXINIT = 0x14
+
+    msg_type = None  # Should be filled by subclasses
+
+    _msg_types = {}
+
+    @classmethod
+    def packet_metaclass(cls, name, bases, clsdict):
+        the_class = type(name, bases, clsdict)
+        cls._msg_types[the_class.msg_type] = the_class
+        return the_class
+
     @classmethod
     def from_bytes(cls, flow):
         packet_len = int.from_bytes(flow[0:4], 'big')
-        padding_length = int.from_bytes(flow[4:5], 'big')
-        payload = flow[5:(5 + packet_len - padding_length - 1)]
-        padding = flow[(5 + packet_len - padding_length - 1):(5 + packet_len - 1)]
-        mac = flow[(5 + packet_len - 1):]
+        padding_length = flow[4]
+        msg_type = flow[5]
+        payload = flow[6:(6 + packet_len - padding_length - 1)]
+        padding = flow[(6 + packet_len - padding_length - 1):(6 + packet_len - 1)]
+        mac = flow[(6 + packet_len - 1):]
 
-        # We only know how to decode KEI messages
-        return KexinitSshPacket.from_bytes(payload)
+        return cls._msg_types[msg_type].from_bytes(payload)
 
     @classmethod
     def _list_from_bytes(cls, flow):
@@ -28,6 +40,8 @@ class BinarySshPacket:
         return len(value).to_bytes(4, "big") + value
 
     def _to_bytes(self, payload):
+        payload = self.msg_type.to_bytes(1, 'big') + payload
+
         # Padding
         _CIPHER_BLOCK_SIZE = 8
         pckt_len = 4 + 1 + len(payload)
@@ -47,15 +61,13 @@ class BinarySshPacket:
         return packet
 
 
-class KexinitSshPacket(BinarySshPacket):
-    SSH_MSG_KEXINIT = 0x14
+class KexinitSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
+    msg_type = BinarySshPacket.SSH_MSG_KEXINIT
 
     @classmethod
     def from_bytes(cls, flow):
-        if not flow[0] == cls.SSH_MSG_KEXINIT:
-            raise Exception("Message is not a KEXINIT message")
-        cookie = flow[1:17]
-        i = 17
+        cookie = flow[0:16]
+        i = 16
         list_len, kex_algo = cls._list_from_bytes(flow[i:])
         i += list_len + 4
         list_len, server_host_key_algo = cls._list_from_bytes(flow[i:])
@@ -120,8 +132,7 @@ class KexinitSshPacket(BinarySshPacket):
         self.languages_stoc = languages_stoc
 
     def to_bytes(self):
-        message = self.SSH_MSG_KEXINIT.to_bytes(1, 'big')
-        message += self.cookie
+        message = self.cookie
         message += self._list_to_bytes(self.kex_algo)
         message += self._list_to_bytes(self.server_host_key_algo)
         message += self._list_to_bytes(self.encryption_algo_ctos)
