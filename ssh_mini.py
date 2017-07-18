@@ -164,8 +164,7 @@ class SshConnection:
 
     def _version(self):
         self.logger.info("Send version")
-        self.socket_w.write(b"SSH-2.0-pyhton_tim&henry_1.0\r\n")
-        self.socket_w.flush()
+        self.write(b"SSH-2.0-pyhton_tim&henry_1.0\r\n")
 
         self.logger.info("Waiting for server version...")
         version = self.socket_r.readline().decode("utf-8")[:-2]
@@ -175,8 +174,7 @@ class SshConnection:
     def _kei(self):
         self.logger.info("Send KEI message")
         message = KexinitSshPacket()
-        self.socket_w.write(message.to_bytes())
-        self.socket_w.flush()
+        self.write(message.to_bytes())
 
         self.logger.info("Waiting for server KEI...")
         data = self.socket_r.read()
@@ -190,6 +188,7 @@ class SshConnection:
             self.socket_w.write(content.encode("utf-8"))
         else:
             self.socket_w.write(content)
+        self.socket_w.flush()
 
 
 @click.command()
