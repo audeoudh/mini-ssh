@@ -174,8 +174,6 @@ class SshConnection:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((self.server_name, self.port))
         self.logger.info("Connexion to %s:%d established" % (self.server_name, self.port))
-        self.socket_w = self.socket.makefile(mode="wb")
-        self.socket_r = self.socket.makefile(mode="rb")
 
         # Start SSH connection
         self._version()
@@ -191,7 +189,16 @@ class SshConnection:
         self.write(b"SSH-2.0-pyhton_tim&henry_1.0\r\n")
 
         self.logger.info("Waiting for server version...")
-        version = self.socket_r.readline().decode("utf-8")[:-2]
+        # Reading a line, until "\r\n"
+        version = b""
+        previous = b""
+        while True:
+            current = self.socket.recv(1)
+            if previous == b"\r" and current == b"\n":
+                break
+            version += previous
+            previous = current
+        version = version.decode("utf-8")
         self.logger.info("Found server version: %s" % version)
         return version
 
@@ -201,24 +208,23 @@ class SshConnection:
         self.write(message.to_bytes())
 
         self.logger.info("Waiting for server KEI...")
-        data = self.read()
-        kei = BinarySshPacket.from_bytes(data)
+        kei = self.recv_ssh_packet()
         if not isinstance(kei, KexinitSshPacket):
             raise Exception("First packet is not a KEI packet")
         logging.info("Found server KEI")
 
     def write(self, content):
         if isinstance(content, str):
-            self.socket_w.write(content.encode("utf-8"))
+            self.socket.send(content.encode("utf-8"))
         else:
-            self.socket_w.write(content)
-        self.socket_w.flush()
+            self.socket.send(content)
 
-    def read(self):
-        data = self.socket_r.read()
-        if data == b"":
-            raise Exception("No more data from TCP stream")
-        return data
+    def recv_ssh_packet(self):
+        packet_len = self.socket.recv(4)
+        if packet_len == b"":
+            raise Exception("No more data in TCP stream; ssh packet expected")
+        data = self.socket.recv(int.from_bytes(packet_len, "big"))
+        return BinarySshPacket.from_bytes(packet_len + data)
 
 
 @click.command()
