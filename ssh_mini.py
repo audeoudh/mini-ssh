@@ -130,17 +130,17 @@ class KexinitSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metacla
                  languages_ctos=None, languages_stoc=None):
         super(KexinitSshPacket, self).__init__()
         if kex_algo is None:
-            kex_algo = ["curve25519-sha256@libssh.org"]
+            kex_algo = ["ecdh-sha2-nistp256"]
         if server_host_key_algo is None:
             server_host_key_algo = ["ssh-rsa"]
         if encryption_algo_ctos is None:
-            encryption_algo_ctos = ["laes128-ctr", "aes192-ctr"]
+            encryption_algo_ctos = ["aes128-ctr"]
         if encryption_algo_stoc is None:
-            encryption_algo_stoc = ["laes128-ctr", "aes192-ctr"]
+            encryption_algo_stoc = ["aes128-ctr"]
         if mac_algo_ctos is None:
-            mac_algo_ctos = ["umac-64-etm@openssh.com"]
+            mac_algo_ctos = ["hmac-sha2-256-etm@openssh.com"]
         if mac_algo_stoc is None:
-            mac_algo_stoc = ["umac-64-etm@openssh.com"]
+            mac_algo_stoc = ["hmac-sha2-256-etm@openssh.com"]
         if compression_algo_ctos is None:
             compression_algo_ctos = ["none"]
         if compression_algo_stoc is None:
