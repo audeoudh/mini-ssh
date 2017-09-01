@@ -237,8 +237,9 @@ class SshConnection:
         self.socket.close()
 
     def _version(self):
+        # send and receive the SSH protocol and software versions
         self.logger.info("Send version")
-        self.write(b"SSH-2.0-pyhton_tim&henry_1.0\r\n")
+        self.write(b"SSH-2.0-python_tim&henry_1.0\r\n")
 
         self.logger.info("Waiting for server version...")
         # Reading a line, until "\r\n"
@@ -255,6 +256,7 @@ class SshConnection:
         return version
 
     def _kei(self):
+        # exchange the supported crypto algorithms
         self.logger.info("Send KEI message")
         message = KexinitSshPacket()
         self.write(message.to_bytes())
@@ -263,7 +265,7 @@ class SshConnection:
         kei = self.recv_ssh_packet()
         if not isinstance(kei, KexinitSshPacket):
             raise Exception("First packet is not a KEI packet")
-        logging.info("Found server KEI")
+        logging.info("Received server's KEI")
 
     def _kexdh(self):
         self.logger.info("Send KEX_ECDH_INIT message")
@@ -274,7 +276,7 @@ class SshConnection:
         kex = self.recv_ssh_packet()
         if not isinstance(kex, KexdhReplySshPacket):
             raise Exception("First packet is not a KEXDH_REPLY packet")
-        logging.info("Found server KEXDH_REPLY")
+        logging.info("Received server's KEXDH_REPLY")
 
     def write(self, content):
         if isinstance(content, str):
