@@ -1,7 +1,11 @@
+import binascii
 import logging
+import os
 import socket
 
 import click
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import ec
 
 
 class BinarySshPacket:
@@ -118,7 +122,7 @@ class KexinitSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metacla
                    mac_algo_ctos, mac_algo_stoc, compression_algo_ctos, compression_algo_stoc,
                    languages_ctos, languages_stoc)
 
-    def __init__(self, cookie=b"\x02" * 16,
+    def __init__(self, cookie=os.urandom(16),
                  kex_algo=None, server_host_key_algo=None,
                  encryption_algo_ctos=None, encryption_algo_stoc=None,
                  mac_algo_ctos=None, mac_algo_stoc=None,
@@ -178,12 +182,14 @@ class KexinitSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metacla
 class KexSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
     msg_type = BinarySshPacket.SSH_MSG_KEX_ECDH_INIT
 
-    def __init__(self, e):
+    def __init__(self):
         super(KexSshPacket, self).__init__()
-        self.e = e
+        self.private_key = ec.generate_private_key(ec.SECP256R1, default_backend())
+        # self.e = self.private_key.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.PKCS1)
+        self.e = binascii.unhexlify('04abfdff2f8cc33ee53e007ea47b1c297a0ed7d45e67fb84e90a55a3396dc1459d1cda6b8d5acdfae90949eeb1cfe08f7802e09aadb06a0fab034a12126aaf1001')
 
     def to_bytes(self):
-        message = self._mpint_to_bytes(self.e, 32)
+        message = self._mpint_to_bytes(int.from_bytes(self.e, 'big'))
         return self._to_bytes(message)
 
 
@@ -260,8 +266,8 @@ class SshConnection:
         logging.info("Found server KEI")
 
     def _kexdh(self):
-        self.logger.info("Send KEXDH_INIT message")
-        message = KexSshPacket(0x17)  # TODO: select a correct random 'e' value
+        self.logger.info("Send KEX_ECDH_INIT message")
+        message = KexSshPacket()
         self.write(message.to_bytes())
 
         self.logger.info("Waiting for server's KEXDH_REPLY")
