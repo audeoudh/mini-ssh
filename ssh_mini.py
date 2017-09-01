@@ -196,7 +196,7 @@ class KexdhReplySshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_meta
 class SshConnection:
     logger = logging.getLogger(__name__)
 
-    client_version = "SSH-2.0-pyhton_tim&henry_1.0"
+    client_version = "SSH-2.0-python_tim&henry_1.0"
 
     def __init__(self, server_name, port=22):
         self.server_name = server_name
