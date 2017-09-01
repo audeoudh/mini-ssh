@@ -218,7 +218,6 @@ class KexdhReplySshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_meta
             self._f = f
 
 
-
 class SshConnection:
     logger = logging.getLogger(__name__)
 
@@ -227,6 +226,7 @@ class SshConnection:
     def __init__(self, server_name, port=22):
         self.server_name = server_name
         self.port = port
+        self.master_secret = None
 
     def __enter__(self):
         # Init TCP Channel
@@ -234,19 +234,13 @@ class SshConnection:
         self.socket.connect((self.server_name, self.port))
         self.logger.info("Connexion to %s:%d established" % (self.server_name, self.port))
 
-        # Init session key
-        self.ephemeral_private_key = ec.generate_private_key(ec.SECP256R1, default_backend())
-
         # Server's ephemeral public key param
         self.point_encoded_server_epub = None
         self.server_epub_key = None
 
         # Start SSH connection
         self._version()
-        self._kei()
-        self._kexdh()
-        self._derive_keys()
-        self._newkeys()
+        self._key_exchange()
 
         return self
 
@@ -254,7 +248,8 @@ class SshConnection:
         self.socket.close()
 
     def _version(self):
-        # send and receive the SSH protocol and software versions
+        """Send and receive the SSH protocol and software versions"""
+
         self.logger.info("Send version")
         self.write((self.client_version + "\r\n").encode("utf-8"))
 
@@ -271,8 +266,11 @@ class SshConnection:
         self.server_version = version.decode("utf-8")
         self.logger.info("Received server version: %s" % self.server_version)
 
-    def _kei(self):
-        # exchange the supported crypto algorithms
+    def _key_exchange(self):
+        """Do a whole key exchange, as described in RFC 4253"""
+        self._ephemeral_private_key = ec.generate_private_key(ec.SECP256R1, default_backend())
+
+        # Key Exchange Init: exchange the supported crypto algorithms
         self.logger.info("Send KEI message")
         message = KexinitSshPacket()
         self.write(message.to_bytes())
@@ -282,37 +280,36 @@ class SshConnection:
         if not isinstance(kei, KexinitSshPacket):
             raise Exception("First packet is not a KEI packet")
 
-    def _kexdh(self):
+        # Key Exchange Diffie-Hellman: create a shared secret
         self.logger.info("Send KEX_ECDH_INIT message")
-        message = KexSshPacket(self.ephemeral_private_key.public_key())
+        message = KexSshPacket(self._ephemeral_private_key.public_key())
         self.write(message.to_bytes())
 
         self.logger.debug("Waiting for server's KEXDH_REPLY")
         kex = self.recv_ssh_packet()
         if not isinstance(kex, KexdhReplySshPacket):
             raise Exception("not a KEXDH_REPLY packet")
+        point_encoded_server_epub = kex.f
 
-        # store server's ephemeral public key
-        self.point_encoded_server_epub = kex.f
-
-    def _derive_keys(self):
         # construct a 'public key' object from the received server public key
         curve = ec.SECP256R1()
-        self.server_epub_key = \
-            ec.EllipticCurvePublicNumbers.from_encoded_point(curve, self.point_encoded_server_epub).public_key(default_backend())
+        self._server_ephemeral_public_key = \
+            ec.EllipticCurvePublicNumbers.from_encoded_point(curve, point_encoded_server_epub) \
+                .public_key(default_backend())
 
         # multiply server's ephemeral public key with client's ephemeral private key --> master secret
-        self.master_secret = self.ephemeral_private_key.exchange(ec.ECDH(), self.server_epub_key)
+        master_secret = self._ephemeral_private_key.exchange(ec.ECDH(), self._server_ephemeral_public_key)
 
-        #
-
-    def _newkeys(self):
+        # New Keys: switch to the new cyphering method
         self.logger.info("Send NEWKEYS")
         self.write(NewKeysSshPacket().to_bytes())
 
         nk = self.recv_ssh_packet()
         if not isinstance(nk, NewKeysSshPacket):
             raise Exception("not a NEWKEYS packet")
+
+        # Activate the encryption
+        self.master_secret = master_secret
 
     def write(self, content):
         if isinstance(content, str):
