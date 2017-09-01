@@ -226,7 +226,7 @@ class SshConnection:
         self.logger.info("Send version")
         self.write((self.client_version + "\r\n").encode("utf-8"))
 
-        self.logger.info("Waiting for server version...")
+        self.logger.debug("Waiting for server version...")
         # Reading a line, until "\r\n"
         version = b""
         previous = b""
@@ -245,22 +245,20 @@ class SshConnection:
         message = KexinitSshPacket()
         self.write(message.to_bytes())
 
-        self.logger.info("Waiting for server KEI...")
+        self.logger.debug("Waiting for server KEI...")
         kei = self.recv_ssh_packet()
         if not isinstance(kei, KexinitSshPacket):
             raise Exception("First packet is not a KEI packet")
-        logging.info("Received server's KEI")
 
     def _kexdh(self):
         self.logger.info("Send KEX_ECDH_INIT message")
         message = KexSshPacket(self.session_private_key.public_key())
         self.write(message.to_bytes())
 
-        self.logger.info("Waiting for server's KEXDH_REPLY")
+        self.logger.debug("Waiting for server's KEXDH_REPLY")
         kex = self.recv_ssh_packet()
         if not isinstance(kex, KexdhReplySshPacket):
-            raise Exception("First packet is not a KEXDH_REPLY packet")
-        logging.info("Received server's KEXDH_REPLY")
+            raise Exception("not a KEXDH_REPLY packet")
 
     def write(self, content):
         if isinstance(content, str):
