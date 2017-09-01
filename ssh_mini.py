@@ -123,32 +123,12 @@ class KexinitSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metacla
                    languages_ctos, languages_stoc)
 
     def __init__(self, cookie=os.urandom(16),
-                 kex_algo=None, server_host_key_algo=None,
-                 encryption_algo_ctos=None, encryption_algo_stoc=None,
-                 mac_algo_ctos=None, mac_algo_stoc=None,
-                 compression_algo_ctos=None, compression_algo_stoc=None,
-                 languages_ctos=None, languages_stoc=None):
+                 kex_algo=("ecdh-sha2-nistp256",), server_host_key_algo=("ssh-rsa",),
+                 encryption_algo_ctos=("aes128-ctr",), encryption_algo_stoc=("aes128-ctr",),
+                 mac_algo_ctos=("hmac-sha2-256-etm@openssh.com",), mac_algo_stoc=("hmac-sha2-256-etm@openssh.com",),
+                 compression_algo_ctos=("none",), compression_algo_stoc=("none",),
+                 languages_ctos=(), languages_stoc=()):
         super(KexinitSshPacket, self).__init__()
-        if kex_algo is None:
-            kex_algo = ["ecdh-sha2-nistp256"]
-        if server_host_key_algo is None:
-            server_host_key_algo = ["ssh-rsa"]
-        if encryption_algo_ctos is None:
-            encryption_algo_ctos = ["aes128-ctr"]
-        if encryption_algo_stoc is None:
-            encryption_algo_stoc = ["aes128-ctr"]
-        if mac_algo_ctos is None:
-            mac_algo_ctos = ["hmac-sha2-256-etm@openssh.com"]
-        if mac_algo_stoc is None:
-            mac_algo_stoc = ["hmac-sha2-256-etm@openssh.com"]
-        if compression_algo_ctos is None:
-            compression_algo_ctos = ["none"]
-        if compression_algo_stoc is None:
-            compression_algo_stoc = ["none"]
-        if languages_ctos is None:
-            languages_ctos = []
-        if languages_stoc is None:
-            languages_stoc = []
         self.cookie = cookie
         self.kex_algo = kex_algo
         self.server_host_key_algo = server_host_key_algo
