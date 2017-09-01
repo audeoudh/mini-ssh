@@ -266,11 +266,25 @@ class SshConnection:
             self.socket.send(content)
 
     def recv_ssh_packet(self):
-        packet_len = self.socket.recv(4)
-        if packet_len == b"":
-            raise Exception("No more data in TCP stream; ssh packet expected")
-        data = self.socket.recv(int.from_bytes(packet_len, "big"))
-        return BinarySshPacket.from_bytes(packet_len + data)
+        # Receive packet length
+        packet_len = b""
+        while len(packet_len) < 4:
+            recv = self.socket.recv(4 - len(packet_len))
+            if len(recv) == 0:
+                raise Exception("No more data in TCP stream; ssh packet expected")
+            packet_len += recv
+        p_len = int.from_bytes(packet_len, "big")
+
+        # Receive data
+        packet = b""
+        while len(packet) < p_len:
+            recv = self.socket.recv(p_len - len(packet))
+            if len(recv) == 0:
+                raise Exception("No more data in TCP stream; ssh packet expected")
+            packet += recv
+
+        # Decode packet
+        return BinarySshPacket.from_bytes(packet_len + packet)
 
 
 @click.command()
