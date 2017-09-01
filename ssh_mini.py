@@ -216,6 +216,8 @@ class KexdhReplySshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_meta
 class SshConnection:
     logger = logging.getLogger(__name__)
 
+    client_version = "SSH-2.0-pyhton_tim&henry_1.0"
+
     def __init__(self, server_name, port=22):
         self.server_name = server_name
         self.port = port
@@ -239,7 +241,7 @@ class SshConnection:
     def _version(self):
         # send and receive the SSH protocol and software versions
         self.logger.info("Send version")
-        self.write(b"SSH-2.0-python_tim&henry_1.0\r\n")
+        self.write((self.client_version + "\r\n").encode("utf-8"))
 
         self.logger.info("Waiting for server version...")
         # Reading a line, until "\r\n"
@@ -251,9 +253,8 @@ class SshConnection:
                 break
             version += previous
             previous = current
-        version = version.decode("utf-8")
-        self.logger.info("Found server version: %s" % version)
-        return version
+        self.server_version = version.decode("utf-8")
+        self.logger.info("Received server version: %s" % self.server_version)
 
     def _kei(self):
         # exchange the supported crypto algorithms
