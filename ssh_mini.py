@@ -1,17 +1,20 @@
 import logging
 import os
 import socket
+from enum import IntEnum
 
 import click
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
 
 
-class BinarySshPacket:
+class SshMsgType(IntEnum):
     SSH_MSG_KEXINIT = 0x14
     SSH_MSG_KEX_ECDH_INIT = 0x1e
     SSH_MSG_KEX_ECDH_REPLY = 0x1f
 
+
+class BinarySshPacket:
     msg_type = None  # Should be filled by subclasses
 
     _msg_types = {}
@@ -91,7 +94,7 @@ class BinarySshPacket:
 
 
 class KexinitSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
-    msg_type = BinarySshPacket.SSH_MSG_KEXINIT
+    msg_type = SshMsgType.SSH_MSG_KEXINIT
 
     @classmethod
     def from_bytes(cls, flow):
@@ -159,7 +162,7 @@ class KexinitSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metacla
 
 
 class KexSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
-    msg_type = BinarySshPacket.SSH_MSG_KEX_ECDH_INIT
+    msg_type = SshMsgType.SSH_MSG_KEX_ECDH_INIT
 
     def __init__(self, public_key):
         super(KexSshPacket, self).__init__()
@@ -171,7 +174,7 @@ class KexSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
 
 
 class KexdhReplySshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
-    msg_type = BinarySshPacket.SSH_MSG_KEX_ECDH_REPLY
+    msg_type = SshMsgType.SSH_MSG_KEX_ECDH_REPLY
 
     @classmethod
     def from_bytes(cls, flow):
@@ -284,7 +287,9 @@ class SshConnection:
             packet += recv
 
         # Decode packet
-        return BinarySshPacket.from_bytes(packet_len + packet)
+        ssh_packet = BinarySshPacket.from_bytes(packet_len + packet)
+        self.logger.info("Received %s", ssh_packet.msg_type.name)
+        return ssh_packet
 
 
 @click.command()
