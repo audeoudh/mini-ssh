@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 
 class SshMsgType(IntEnum):
     SSH_MSG_KEXINIT = 0x14
+    SSH_MSG_NEWKEYS = 0x15
     SSH_MSG_KEX_ECDH_INIT = 0x1e
     SSH_MSG_KEX_ECDH_REPLY = 0x1f
 
@@ -161,6 +162,17 @@ class KexinitSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metacla
         return self._to_bytes(message)
 
 
+class NewKeysSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
+    msg_type = SshMsgType.SSH_MSG_NEWKEYS
+
+    @classmethod
+    def from_bytes(cls, flow):
+        return cls()
+
+    def to_bytes(self):
+        return self._to_bytes(b"")
+
+
 class KexSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
     msg_type = SshMsgType.SSH_MSG_KEX_ECDH_INIT
 
@@ -215,6 +227,7 @@ class SshConnection:
         self._version()
         self._kei()
         self._kexdh()
+        self._newkeys()
 
         return self
 
@@ -259,6 +272,14 @@ class SshConnection:
         kex = self.recv_ssh_packet()
         if not isinstance(kex, KexdhReplySshPacket):
             raise Exception("not a KEXDH_REPLY packet")
+
+    def _newkeys(self):
+        self.logger.info("Send NEWKEYS")
+        self.write(NewKeysSshPacket().to_bytes())
+
+        nk = self.recv_ssh_packet()
+        if not isinstance(nk, NewKeysSshPacket):
+            raise Exception("not a NEWKEYS packet")
 
     def write(self, content):
         if isinstance(content, str):
