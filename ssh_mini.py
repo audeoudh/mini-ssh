@@ -6,8 +6,8 @@ import click
 
 class BinarySshPacket:
     SSH_MSG_KEXINIT = 0x14
-    SSH_MSG_KEXDH_INIT = 0x1e
-    SSH_MSG_KEXDH_REPLY = 0x1f
+    SSH_MSG_KEX_ECDH_INIT = 0x1e #30
+    SSH_MSG_KEX_ECDH_REPLY = 0x1f
 
     msg_type = None  # Should be filled by subclasses
 
@@ -176,7 +176,7 @@ class KexinitSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metacla
 
 
 class KexSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
-    msg_type = BinarySshPacket.SSH_MSG_KEXDH_INIT
+    msg_type = BinarySshPacket.SSH_MSG_KEX_ECDH_INIT
 
     def __init__(self, e):
         super(KexSshPacket, self).__init__()
@@ -188,7 +188,7 @@ class KexSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
 
 
 class KexdhReplySshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
-    msg_type = BinarySshPacket.SSH_MSG_KEXDH_REPLY
+    msg_type = BinarySshPacket.SSH_MSG_KEX_ECDH_REPLY
 
     @classmethod
     def from_bytes(cls, flow):
