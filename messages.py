@@ -318,11 +318,28 @@ class UserauthPublickeyRequestPacket(UserauthRequestPacket, metaclass=BinarySshP
         self.algo_name = algo_name
         self.blob = blob
 
-    def to_bytes(self):
+    def to_bytes(self, private_key=None):
+        """Provide a private key and the message will be signed"""
         message = super().to_bytes()
-        message += self._bool_to_bytes(False)
-        message += self._string_to_bytes(self.algo_name)
-        message += self._string_to_bytes(self.blob)
+        message += self._bool_to_bytes(private_key is not None)
+        message += self._string_to_bytes(self.algo_name, encoding="ascii")
+
+        # Blob. Extract data according to the algo name
+        if self.algo_name == "ssh-rsa":
+            e, n = self.blob
+            message += self._mpint_to_bytes(e)
+            message += self._mpint_to_bytes(n)
+        else:
+            # Don't know this algorithm. Use the blob as is and hope all is normal
+            message += self._string_to_bytes(self.blob, encoding="octet")
+
+        # Add signature
+        if private_key is not None:
+            to_be_signed = self._string_to_bytes(b"", encoding="octet")
+            to_be_signed += message
+            signature = private_key.sign(to_be_signed)
+            message += self._string_to_bytes(signature, encoding="octet")
+
         return message
 
 
