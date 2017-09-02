@@ -5,10 +5,16 @@ from typing import Union
 
 
 class SshMsgType(IntEnum):
-    SSH_MSG_KEXINIT = 0x14
-    SSH_MSG_NEWKEYS = 0x15
-    SSH_MSG_KEX_ECDH_INIT = 0x1e
-    SSH_MSG_KEX_ECDH_REPLY = 0x1f
+    SSH_MSG_KEXINIT = 20
+    SSH_MSG_NEWKEYS = 21
+
+    SSH_MSG_KEX_ECDH_INIT = 30
+    SSH_MSG_KEX_ECDH_REPLY = 31
+
+    SSH_MSG_USERAUTH_REQUEST = 50
+    SSH_MSG_USERAUTH_FAILURE = 51
+    SSH_MSG_USERAUTH_SUCCESS = 52
+    SSH_MSG_USERAUTH_BANNER = 53
 
 
 class BinarySshPacket(metaclass=abc.ABCMeta):
@@ -265,3 +271,72 @@ class KexdhReplySshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_meta
             raise Exception("Server's public key must be stored as an integer!")
         else:
             self._f = f
+
+
+class UserauthRequestPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
+    msg_type = SshMsgType.SSH_MSG_USERAUTH_REQUEST
+
+    def __init__(self, user_name, service_name, method_name):
+        self.user_name = user_name
+        self.service_name = service_name
+        self.method_name = method_name
+
+    def to_bytes(self):
+        message = self._string_to_bytes(self.user_name, encoding="utf-8")
+        message += self._string_to_bytes(self.service_name, encoding="ascii")
+        message += self._string_to_bytes(self.method_name, encoding="ascii")
+        return message
+
+
+class UserauthFailurePacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
+    msg_type = SshMsgType.SSH_MSG_USERAUTH_FAILURE
+
+    def __init__(self, next_authentications, partial_success):
+        self.next_authentications = next_authentications
+        self.partial_success = partial_success
+
+    @classmethod
+    def from_bytes(cls, flow):
+        i = 0
+        read_len, next_authentications = cls._list_from_bytes(flow[i:])
+        i += read_len
+        _, partial_success = cls._bool_from_bytes(flow[i:])
+        return cls(next_authentications, partial_success)
+
+
+class UserauthSuccessPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
+    msg_type = SshMsgType.SSH_MSG_USERAUTH_SUCCESS
+
+    @classmethod
+    def from_bytes(cls, flow):
+        return cls()
+
+
+class UserauthPublickeyRequestPacket(UserauthRequestPacket, metaclass=BinarySshPacket.packet_metaclass):
+    def __init__(self, user_name, service_name, algo_name, blob):
+        super().__init__(user_name, service_name, "publickey")
+        self.algo_name = algo_name
+        self.blob = blob
+
+    def to_bytes(self):
+        message = super().to_bytes()
+        message += self._bool_to_bytes(False)
+        message += self._string_to_bytes(self.algo_name)
+        message += self._string_to_bytes(self.blob)
+        return message
+
+
+class UserauthBannerPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
+    msg_type = SshMsgType.SSH_MSG_USERAUTH_BANNER
+
+    def __init__(self, message, language_tag):
+        self.message = message
+        self.language_tag = language_tag
+
+    @classmethod
+    def from_bytes(cls, flow):
+        i = 0
+        read_len, message = cls._string_from_bytes(flow[i:], encoding="utf-8")
+        i += read_len
+        language_tag = flow[i:]  # TODO: read RFC 3066 and decode this field
+        return cls(message, language_tag)
