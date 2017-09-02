@@ -13,7 +13,8 @@ class SshConnection:
 
     client_version = "SSH-2.0-python_tim&henry_1.0"
 
-    def __init__(self, server_name, port=22):
+    def __init__(self, user_name, server_name, port=22):
+        self.user_name = user_name
         self.server_name = server_name
         self.port = port
         self.master_secret = None
@@ -132,10 +133,20 @@ class SshConnection:
 
 
 @click.command()
-@click.argument("server_name")
+@click.argument("remote")
 @click.option("-p", required=False, default=22)
-def main(server_name, p=22):
-    with SshConnection(server_name, p) as sshc:
+def main(remote, p=22):
+    parts = remote.split("@")
+    if len(parts) == 1:
+        user_name = "root"  # TODO: better to extract the username from environment
+        server_name = remote
+    elif len(parts) == 2:
+        user_name = parts[0]
+        server_name = parts[1]
+    else:
+        raise Exception("Unable to find user & server name")
+
+    with SshConnection(user_name, server_name, p) as sshc:
         sshc.write("foo")
 
 
