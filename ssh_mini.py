@@ -28,6 +28,7 @@ class BinarySshPacket:
 
     @classmethod
     def from_bytes(cls, flow):
+        # after receiving a generic ssh packet, this function derives the correct subclass.
         packet_len = int.from_bytes(flow[0:4], 'big')
         padding_length = flow[4]
         msg_type = flow[5]
@@ -190,6 +191,7 @@ class KexdhReplySshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_meta
 
     @classmethod
     def from_bytes(cls, flow):
+        # disect payload
         i = 0
         size, server_key = cls._field_from_bytes(flow[i:])
         i += size + 4
