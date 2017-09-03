@@ -203,8 +203,20 @@ class KexdhReplySshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_meta
     def __init__(self, server_key, f, f_sig):
         super(KexdhReplySshPacket, self).__init__()
         self.server_key = server_key
-        self.f = f
+        self._f = f
         self.f_sig = f_sig
+
+    @property
+    def f(self):
+        return self._f.to_bytes(65, 'big')
+
+    @f.setter
+    def f(self, f):
+        if not isinstance(f, int):
+            raise Exception("Server's public key must be stored as an integer!")
+        else:
+            self._f = f
+
 
 
 class SshConnection:
