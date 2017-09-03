@@ -235,12 +235,17 @@ class SshConnection:
         self.logger.info("Connexion to %s:%d established" % (self.server_name, self.port))
 
         # Init session key
-        self.session_private_key = ec.generate_private_key(ec.SECP256R1, default_backend())
+        self.ephemeral_private_key = ec.generate_private_key(ec.SECP256R1, default_backend())
+
+        # Server's ephemeral public key param
+        self.point_encoded_server_epub = None
+        self.server_epub_key = None
 
         # Start SSH connection
         self._version()
         self._kei()
         self._kexdh()
+        self._derive_keys()
         self._newkeys()
 
         return self
@@ -279,13 +284,27 @@ class SshConnection:
 
     def _kexdh(self):
         self.logger.info("Send KEX_ECDH_INIT message")
-        message = KexSshPacket(self.session_private_key.public_key())
+        message = KexSshPacket(self.ephemeral_private_key.public_key())
         self.write(message.to_bytes())
 
         self.logger.debug("Waiting for server's KEXDH_REPLY")
         kex = self.recv_ssh_packet()
         if not isinstance(kex, KexdhReplySshPacket):
             raise Exception("not a KEXDH_REPLY packet")
+
+        # store server's ephemeral public key
+        self.point_encoded_server_epub = kex.f
+
+    def _derive_keys(self):
+        # construct a 'public key' object from the received server public key
+        curve = ec.SECP256R1()
+        self.server_epub_key = \
+            ec.EllipticCurvePublicNumbers.from_encoded_point(curve, self.point_encoded_server_epub).public_key(default_backend())
+
+        # multiply server's ephemeral public key with client's ephemeral private key --> master secret
+        self.master_secret = self.ephemeral_private_key.exchange(ec.ECDH(), self.server_epub_key)
+
+        #
 
     def _newkeys(self):
         self.logger.info("Send NEWKEYS")
