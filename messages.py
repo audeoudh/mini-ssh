@@ -126,19 +126,27 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
 
         return cls._msg_types[msg_type].from_bytes(payload)
 
-    def _to_bytes(self, payload, mac_creator=None):
-        """mac_creator: a function that computes the mac for the given payload"""
+    def _to_bytes(self, payload, mac_creator=None, cipher_block_size=8):
+        """Convert the packet to byte flow.
+
+        This method should not be used externally. Instead, use the
+        `to_bytes` method of subclasses, that will call this method
+        with the correct payload.
+
+        cipher_block_size: the size of a cipher block.
+        mac_creator: a function that computes the mac for the given
+          payload"""
         payload = self._byte_to_bytes(self.msg_type) + payload
 
         # Padding
-        _CIPHER_BLOCK_SIZE = 8
+        cipher_block_size = max(cipher_block_size, 8)
         pckt_len = 4 + 1 + len(payload)
-        if pckt_len < max(16, _CIPHER_BLOCK_SIZE):
-            pad_len = max(16, _CIPHER_BLOCK_SIZE) - pckt_len
+        if pckt_len < max(16, cipher_block_size):
+            pad_len = max(16, cipher_block_size) - pckt_len
         else:
-            pad_len = _CIPHER_BLOCK_SIZE - pckt_len % _CIPHER_BLOCK_SIZE
+            pad_len = cipher_block_size - pckt_len % cipher_block_size
         if pad_len < 4:
-            pad_len += _CIPHER_BLOCK_SIZE
+            pad_len += cipher_block_size
         packet = self._byte_to_bytes(pad_len) + payload + b"\00" * pad_len
 
         # Packet length
