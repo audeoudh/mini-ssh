@@ -126,7 +126,8 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
 
         return cls._msg_types[msg_type].from_bytes(payload)
 
-    def _to_bytes(self, payload):
+    def _to_bytes(self, payload, mac_creator=None):
+        """mac_creator: a function that computes the mac for the given payload"""
         payload = self._byte_to_bytes(self.msg_type) + payload
 
         # Padding
@@ -143,7 +144,10 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
         # Packet length
         packet = self._uint32_to_bytes(len(packet)) + packet
 
-        # Not Yet Implemented: MAC field
+        # MAC field
+        if mac_creator is not None:
+            mac = mac_creator(packet)
+            packet += mac
 
         return packet
 
