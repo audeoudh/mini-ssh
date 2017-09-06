@@ -126,16 +126,15 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
 
         return cls._msg_types[msg_type].from_bytes(payload)
 
-    def _to_bytes(self, payload, mac_creator=None, cipher_block_size=8):
+    def to_bytes(self, mac_creator=None, cipher_block_size=8):
         """Convert the packet to byte flow.
-
-        This method should not be used externally. Instead, use the
-        `to_bytes` method of subclasses, that will call this method
-        with the correct payload.
 
         cipher_block_size: the size of a cipher block.
         mac_creator: a function that computes the mac for the given
           payload"""
+        payload = self._payload()
+
+        # Prepend message type
         payload = self._byte_to_bytes(self.msg_type) + payload
 
         # Padding
@@ -158,6 +157,12 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
             packet += mac
 
         return packet
+
+    def _payload(self):
+        """Convert all the fields of the concrete message to a flow of bytes."""
+        # Do not use abstract here, as some message cannot be sent from the client, so they do not have a `_payload`
+        # method, but are, in fact, concrete
+        return NotImplementedError()
 
 
 class KexinitSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
@@ -212,7 +217,7 @@ class KexinitSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metacla
         self.languages_ctos = languages_ctos
         self.languages_stoc = languages_stoc
 
-    def to_bytes(self):
+    def _payload(self):
         message = self.cookie
         message += self._list_to_bytes(self.kex_algo)
         message += self._list_to_bytes(self.server_host_key_algo)
@@ -227,7 +232,7 @@ class KexinitSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metacla
         message += self._bool_to_bytes(False)  # KEX first packet follows
         message += self._uint32_to_bytes(0)  # reserved
 
-        return self._to_bytes(message)
+        return message
 
 
 class NewKeysSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
@@ -237,8 +242,8 @@ class NewKeysSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metacla
     def from_bytes(cls, flow):
         return cls()
 
-    def to_bytes(self):
-        return self._to_bytes(b"")
+    def _payload(self):
+        return b""
 
 
 class KexSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
@@ -248,9 +253,9 @@ class KexSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
         super(KexSshPacket, self).__init__()
         self.e = public_key.public_numbers().encode_point()
 
-    def to_bytes(self):
+    def _payload(self):
         message = self._string_to_bytes(self.e, encoding="octet")
-        return self._to_bytes(message)
+        return message
 
 
 class KexdhReplySshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
@@ -293,7 +298,7 @@ class UserauthRequestPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_me
         self.service_name = service_name
         self.method_name = method_name
 
-    def to_bytes(self):
+    def _payload(self):
         message = self._string_to_bytes(self.user_name, encoding="utf-8")
         message += self._string_to_bytes(self.service_name, encoding="ascii")
         message += self._string_to_bytes(self.method_name, encoding="ascii")
@@ -330,7 +335,7 @@ class UserauthPublickeyRequestPacket(UserauthRequestPacket, metaclass=BinarySshP
         self.algo_name = algo_name
         self.blob = blob
 
-    def to_bytes(self, private_key=None):
+    def _payload(self, private_key=None):
         """Provide a private key and the message will be signed"""
         message = super().to_bytes()
         message += self._bool_to_bytes(private_key is not None)
