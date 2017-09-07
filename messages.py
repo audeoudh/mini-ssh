@@ -337,7 +337,7 @@ class UserauthPublickeyRequestPacket(UserauthRequestPacket, metaclass=BinarySshP
 
     def _payload(self, private_key=None):
         """Provide a private key and the message will be signed"""
-        message = super().to_bytes()
+        message = super()._payload()
         message += self._bool_to_bytes(private_key is not None)
         message += self._string_to_bytes(self.algo_name, encoding="ascii")
 
