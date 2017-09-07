@@ -1,5 +1,4 @@
 import abc
-import os
 from enum import IntEnum
 from typing import Union
 
@@ -126,12 +125,14 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
 
         return cls._msg_types[msg_type].from_bytes(payload)
 
-    def to_bytes(self, mac_creator=None, cipher_block_size=8):
+    def to_bytes(self, cipher_block_size=8):
         """Convert the packet to byte flow.
 
-        cipher_block_size: the size of a cipher block.
-        mac_creator: a function that computes the mac for the given
-          payload"""
+        This method does not handle MAC and encryption. For this,
+        consider using the `transport` module.
+
+        cipher_block_size: Size of a cipher block. Use 1 for stream
+          ciphers"""
         payload = self._payload()
 
         # Prepend message type
@@ -150,11 +151,6 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
 
         # Packet length
         packet = self._uint32_to_bytes(len(packet)) + packet
-
-        # MAC field
-        if mac_creator is not None:
-            mac = mac_creator(packet)
-            packet += mac
 
         return packet
 
