@@ -25,6 +25,9 @@ class SshConnection:
         self.socket.connect((self.server_name, self.port))
         self.logger.info("Connexion to %s:%d established" % (self.server_name, self.port))
 
+        # Compute the session identifier
+        self.session_id = os.urandom(16)
+
         # Server's ephemeral public key param
         self.point_encoded_server_epub = None
         self.server_epub_key = None
@@ -63,7 +66,7 @@ class SshConnection:
 
         # Key Exchange Init: exchange the supported crypto algorithms
         self.logger.info("Send KEI message")
-        message = KexinitSshPacket()
+        message = KexinitSshPacket(cookie=self.session_id)
         self.write(message.to_bytes())
 
         self.logger.debug("Waiting for server KEI...")

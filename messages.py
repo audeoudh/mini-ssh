@@ -198,7 +198,7 @@ class KexinitSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metacla
                    mac_algo_ctos, mac_algo_stoc, compression_algo_ctos, compression_algo_stoc,
                    languages_ctos, languages_stoc)
 
-    def __init__(self, cookie=os.urandom(16),
+    def __init__(self, cookie=b"\x00" * 16,
                  kex_algo=("ecdh-sha2-nistp256",), server_host_key_algo=("ssh-rsa",),
                  encryption_algo_ctos=("aes128-ctr",), encryption_algo_stoc=("aes128-ctr",),
                  mac_algo_ctos=("hmac-sha2-256-etm@openssh.com",), mac_algo_stoc=("hmac-sha2-256-etm@openssh.com",),
