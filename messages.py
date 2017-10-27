@@ -89,11 +89,21 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
         return read_len, mpi
 
     @classmethod
-    def _mpint_to_bytes(cls, value: int, mpi_len: int = None):
-        if mpi_len is None:
-            mpi_len = (value.bit_length() + 7) // 8
-        length = cls._uint32_to_bytes(mpi_len)
-        mpi = value.to_bytes(mpi_len, 'big')
+    def _mpint_to_bytes(cls, value: Union[int, bytes], mpi_len: int = None):
+        """Encode an integer or a byte flow as a ssh mpint field.
+
+        value: the value to encode.
+        mpi_len: if value is an integer, mpi_len will be the size of
+          the field. If it is not given, try to infer it from the
+          value."""
+        if isinstance(value, bytes):
+            length = cls._uint32_to_bytes(len(value))
+            mpi = value
+        else:
+            if mpi_len is None:
+                mpi_len = (value.bit_length() + 7) // 8
+            mpi = value.to_bytes(mpi_len, 'big')
+            length = cls._uint32_to_bytes(mpi_len)
         return length + mpi
 
     @classmethod
@@ -118,12 +128,16 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
         i += read_len
         read_len, msg_type = cls._byte_from_bytes(flow[i:])
         i += read_len
-        payload = flow[i:(i + packet_len - padding_length - 1)]
+        payload = flow[i:(i + packet_len - padding_length - 2)]
         i += len(payload)
         i += padding_length
         mac = flow[(i + packet_len - 1):]
 
-        return cls._msg_types[msg_type].from_bytes(payload)
+        msg = cls._msg_types[msg_type].from_bytes(payload)
+        msg.mac = mac
+        msg._bytes = flow
+        msg._payload_bytes = payload
+        return msg
 
     def to_bytes(self, cipher_block_size=8):
         """Convert the packet to byte flow.
@@ -133,10 +147,10 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
 
         cipher_block_size: Size of a cipher block. Use 1 for stream
           ciphers"""
-        payload = self._payload()
+        self._payload_bytes = self._payload()
 
         # Prepend message type
-        payload = self._byte_to_bytes(self.msg_type) + payload
+        payload = self._byte_to_bytes(self.msg_type) + self._payload_bytes
 
         # Padding
         cipher_block_size = max(cipher_block_size, 8)
@@ -152,6 +166,7 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
         # Packet length
         packet = self._uint32_to_bytes(len(packet)) + packet
 
+        self._bytes = packet
         return packet
 
     def _payload(self):
@@ -159,6 +174,15 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
         # Do not use abstract here, as some message cannot be sent from the client, so they do not have a `_payload`
         # method, but are, in fact, concrete
         return NotImplementedError()
+
+    def bytes(self):
+        try:
+            return self._bytes
+        except AttributeError:
+            raise Exception("This message has never been sent. Use `to_bytes` before.")
+
+    def payload_bytes(self):
+        return self._payload_bytes
 
 
 class KexinitSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
@@ -245,9 +269,9 @@ class NewKeysSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metacla
 class KexSshPacket(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
     msg_type = SshMsgType.SSH_MSG_KEX_ECDH_INIT
 
-    def __init__(self, public_key):
+    def __init__(self, point_encoded_public_key):
         super(KexSshPacket, self).__init__()
-        self.e = public_key.public_numbers().encode_point()
+        self.e = point_encoded_public_key
 
     def _payload(self):
         message = self._string_to_bytes(self.e, encoding="octet")

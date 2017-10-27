@@ -1,13 +1,30 @@
+import abc
 import logging
 import socket
 
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hmac, hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from messages import BinarySshPacket
 
 
-class NoneMAC:
+class MACAlgo(metaclass=abc.ABCMeta):
+    name = None  # Should be filled in subclasses
+    mac_length = None  # Should be filled in subclasses
+
+    @abc.abstractmethod
+    def compute_mac(self, payload):
+        """Compute the MAC of this payload"""
+
+    def check_mac(self, payload, mac):
+        """Return True if the given MAC is valid for this payload."""
+        return self.compute_mac(payload) == mac
+
+
+class NoneMAC(MACAlgo):
+    """MAC of any message is empty."""
+
     name = "none"
     mac_length = 0
 
@@ -15,7 +32,21 @@ class NoneMAC:
         return b""
 
     def check_mac(self, payload, mac):
-        return self.compute_mac(payload) == mac
+        return mac == b""
+
+
+class HMAC_SHA2_256_ETM_openssh_MAC(MACAlgo):
+    name = "hmac-sha2-256-etm@openssh.com"
+    mac_length = 32
+
+    def __init__(self, key):
+        self.key = key
+
+    def compute_mac(self, payload):
+        mac = hmac.HMAC(self.key, hashes.SHA256(), backend=default_backend())
+
+        mac.update(payload)
+        return mac.finalize()
 
 
 class NoneCipher:
@@ -29,6 +60,25 @@ class NoneCipher:
         return payload
 
 
+class AES128CTR_Cipher(NoneCipher):
+    name = "aes128-ctr"
+    block_size = 16
+
+    def __init__(self, key_bytes, iv_bytes):
+        super().__init__()
+        self._key = key_bytes[:16]
+        IV = iv_bytes[:16]
+        self.cipher = Cipher(algorithms.AES(self._key), modes.CTR(IV), backend=default_backend())
+
+    def encrypt(self, payload):
+        encryptor = self.cipher.encryptor()
+        return encryptor.update(payload) + encryptor.finalize()
+
+    def decrypt(self, payload):
+        decryptor = self.cipher.decryptor()
+        return decryptor.update(payload) + decryptor.finalize()
+
+
 class Transporter:
     logger = logging.getLogger(__name__)
 
@@ -39,7 +89,7 @@ class Transporter:
         # Init TCP Channel
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((self.server_name, self.server_port))
-        self.logger.info("Connexion to %s:%d established" % (self.server_name, self.server_port))
+        self.logger.info("TCP connection to %s:%d established" % (self.server_name, self.server_port))
 
         self._ctos_cipher = NoneCipher()
         self._ctos_mac_algo = NoneMAC()
@@ -138,24 +188,3 @@ class Transporter:
 
     def close(self):
         self.socket.close()
-
-
-class AES128_CTR_Transporter(Transporter):
-    name = "aes128-ctr"
-
-    def __init__(self, sequence_number, key_bytes, iv_bytes):
-        super().__init__(sequence_number)
-        self._key = key_bytes[:16]
-        IV = iv_bytes[:16]
-        self.cipher = Cipher(algorithms.AES(self._key), modes.CTR(IV), backend=default_backend())
-
-    def mangle(self, payload):
-        encryptor = self.cipher.encryptor()
-        encrypted_data = encryptor.update(payload) + encryptor.finalize()
-        mac = MAC(self._mac_key, payload)
-        return encrypted_data + mac
-
-    def unmangle(self, encrypted_payload):
-        decryptor = self.cipher.decryptor()
-        packet_length = decryptor.update(encrypted_payload)
-        no_length_payload = decryptor.update(encrypted_payload) + decryptor.finalize()
