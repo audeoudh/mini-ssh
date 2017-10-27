@@ -60,9 +60,18 @@ class Transporter:
         previous = b""
         while True:
             current = self.socket.recv(1)
+            # The identification MUST be terminated by a single Carriage Return
+            # (CR) and a single Line Feed (LF) character (ASCII 13 and 10,
+            # respectively).
             if previous == b"\r" and current == b"\n":
                 break
             version += previous
+            # Implementers who wish to maintain compatibility with older,
+            # undocumented versions of this protocol may want to process the
+            # identification string without expecting the presence of the
+            # carriage return character
+            if current == b"\n":
+                break
             previous = current
         server_version = version.decode("utf-8")
         self.logger.info("Received server version: %s" % server_version)
