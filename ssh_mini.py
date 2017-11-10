@@ -7,6 +7,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
+import fields
 from messages import *
 from transport import Transporter
 
@@ -51,80 +52,108 @@ class SshConnection:
 
         # Key Exchange Init: exchange the supported crypto algorithms
         self.logger.info("Send KEI message")
-        client_kexinit = KexinitSshPacket(cookie=self.session_id)
+        client_kexinit = KexInit(cookie=self.session_id)
         self.transporter.transmit(client_kexinit)
 
         self.logger.debug("Waiting for server KEI...")
         server_kexinit = self.transporter.receive()
-        if not isinstance(server_kexinit, KexinitSshPacket):
+        if not isinstance(server_kexinit, KexInit):
             raise Exception("First packet is not a KEI packet")
 
         # Key Exchange Diffie-Hellman: create a shared secret
         self.logger.info("Send KEX_ECDH_INIT message")
-        client_kex_ecdh = KexSshPacket(self._ephemeral_private_key.public_key().public_numbers().encode_point())
+        client_kex_ecdh = KexDHInit(
+            e=self._ephemeral_private_key.public_key().public_numbers().encode_point())
         self.transporter.transmit(client_kex_ecdh)
 
         self.logger.debug("Waiting for server's KEXDH_REPLY")
         server_kex_ecdh = self.transporter.receive()
-        if not isinstance(server_kex_ecdh, KexdhReplySshPacket):
+        if not isinstance(server_kex_ecdh, KexDHReply):
             raise Exception("not a KEXDH_REPLY packet")
-        point_encoded_server_epub = server_kex_ecdh.f
 
         # construct a 'public key' object from the received server public key
         curve = ec.SECP256R1()
         self._server_ephemeral_public_key = \
-            ec.EllipticCurvePublicNumbers.from_encoded_point(curve, point_encoded_server_epub) \
+            ec.EllipticCurvePublicNumbers.from_encoded_point(curve, server_kex_ecdh.f) \
                 .public_key(default_backend())
 
         # multiply server's ephemeral public key with client's ephemeral private key --> shared secret
         shared_secret = self._ephemeral_private_key.exchange(ec.ECDH(), self._server_ephemeral_public_key)
 
         # Compute exchange hash
-        # FIXME: not sure these are the correct formula
-        to_be_hashed = \
-            BinarySshPacket._string_to_bytes(self.client_version, 'ascii') + \
-            BinarySshPacket._string_to_bytes(self.server_version, 'ascii') + \
-            BinarySshPacket._string_to_bytes(SshMsgType.SSH_MSG_KEXINIT.to_bytes(1, 'big') + client_kexinit.payload_bytes(), 'octet') + \
-            BinarySshPacket._string_to_bytes(SshMsgType.SSH_MSG_KEXINIT.to_bytes(1, 'big') + server_kexinit.payload_bytes(), 'octet') + \
-            BinarySshPacket._string_to_bytes(server_kex_ecdh.server_key, 'octet') + \
-            BinarySshPacket._string_to_bytes(self._ephemeral_private_key.public_key().public_numbers().encode_point(), 'octet') + \
-            BinarySshPacket._string_to_bytes(server_kex_ecdh.f, 'octet') + \
-            BinarySshPacket._mpint_to_bytes(shared_secret, 32)
+        class ExchangeHash(BinarySshPacket):
+            # Not really a SSH packet, but we use the same method to get the payload.
 
-        key_exchange_hash = hashlib.sha256(to_be_hashed).digest()
+            __slots__ = ('client_version', 'server_version',
+                         'client_kexinit', 'server_kexinit',
+                         'host_key',
+                         'client_exchange_value', 'server_exchange_value',
+                         'shared_secret')
+
+            _fields_type = (StringType('ascii'), StringType('ascii'),
+                            StringType('octet'), StringType('octet'),
+                            StringType('octet'),
+                            MpintType(), MpintType(),
+                            MpintType())
+
+            def __init__(self, client_version, server_version,
+                         client_kexinit, server_kexinit,
+                         host_key,
+                         client_exchange_value, server_exchange_value,
+                         shared_secret):
+                self.client_version = client_version
+                self.server_version = server_version
+                self.client_kexinit = client_kexinit
+                self.server_kexinit = server_kexinit
+                self.host_key = host_key
+                self.client_exchange_value = client_exchange_value
+                self.server_exchange_value = server_exchange_value
+                self.shared_secret = shared_secret
+
+        # FIXME: not sure these are the correct formula to compute the hash
+        to_be_hashed = ExchangeHash(
+            self.client_version, self.server_version,
+            client_kexinit.payload(), server_kexinit.payload(),
+            server_kex_ecdh.server_public_key,
+            client_kex_ecdh.e, server_kex_ecdh.f,
+            shared_secret)
+
+        key_exchange_hash = hashlib.sha256(to_be_hashed.payload()).digest()
 
         # Verify server's signature
         i = 0
-        read_len, key_type = BinarySshPacket._string_from_bytes(server_kex_ecdh.server_key[i:], encoding="ascii")
+        read_len, key_type = fields.StringType('ascii').from_bytes(server_kex_ecdh.server_public_key[i:])
         # TODO: support other key types. Here, only ssh-rsa keys are supported.
         assert key_type == 'ssh-rsa'
         i += read_len
-        read_len, rsa_exponent = BinarySshPacket._mpint_from_bytes(server_kex_ecdh.server_key[i:])
+        read_len, rsa_exponent = fields.MpintType().from_bytes(server_kex_ecdh.server_public_key[i:])
         i += read_len
-        _, rsa_modulus = BinarySshPacket._mpint_from_bytes(server_kex_ecdh.server_key[i:])
-        server_key = rsa.RSAPublicNumbers(rsa_exponent, rsa_modulus).public_key(default_backend())
+        _, rsa_modulus = fields.MpintType().from_bytes(server_kex_ecdh.server_public_key[i:])
+        server_key = rsa.RSAPublicNumbers(
+            e=int.from_bytes(rsa_exponent, 'big'),
+            n=int.from_bytes(rsa_modulus, 'big')) \
+            .public_key(default_backend())
 
         i = 0
-        read_len, key_type = BinarySshPacket._string_from_bytes(server_kex_ecdh.f_sig[i:], encoding="ascii")
+        read_len, key_type = fields.StringType('ascii').from_bytes(server_kex_ecdh.signature[i:])
         # TODO: support other key types. Here, only ssh-rsa keys are supported.
         assert key_type == 'ssh-rsa'
         i += read_len
-        _, signature = BinarySshPacket._string_from_bytes(server_kex_ecdh.f_sig[i:], encoding="octet")
+        _, signature = fields.StringType('octet').from_bytes(server_kex_ecdh.signature[i:])
 
         # Verify the signature
         server_key.verify(signature, key_exchange_hash, padding.PKCS1v15(), hashes.SHA1())
 
         # New Keys: switch to the new cyphering method
         self.logger.info("Send NEWKEYS")
-        self.transporter.transmit(NewKeysSshPacket())
+        self.transporter.transmit(NewKeys())
 
         nk = self.transporter.receive()
-        if not isinstance(nk, NewKeysSshPacket):
+        if not isinstance(nk, NewKeys):
             raise Exception("not a NEWKEYS packet")
 
         # Activate the encryption
         self.shared_secret = shared_secret
-
 
     def _close(self):
         self.transporter.close()
