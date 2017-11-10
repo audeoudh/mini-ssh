@@ -20,22 +20,35 @@ class SshMsgType(IntEnum):
 
 
 class BinarySshPacket(metaclass=abc.ABCMeta):
-    msg_type = None  # Should be filled by subclasses
-    _msg_types = {}
+    known_msg_types = {}
 
-    __slots__ = ('mac',)
+    __slots__ = ('mac', 'msg_type')
 
-    _fields_type = (None,)
+    _fields_type = (None, ByteType)
 
     packet_length_type = Uint32Type()
     padding_length_type = ByteType()
     message_type_type = ByteType()
 
-    @classmethod
-    def packet_metaclass(cls, name, bases, clsdict):
-        the_class = type(name, bases, clsdict)
-        cls._msg_types[the_class.msg_type] = the_class
-        return the_class
+    def __init_subclass__(cls, msg_type=None, **kwargs):
+        """Initialize the subclass when it is created.
+
+        :param int msg_type: The type of the message. Have to be known to
+        automatically parse the correct message type in the `from_bytes` class
+        method. If None, the subclass won't be registered and the parsing
+        mechanism won't ever return a message of this type."""
+        super().__init_subclass__(**kwargs)
+        if msg_type is not None:
+            cls.msg_type = msg_type
+            cls.known_msg_types[msg_type] = cls
+
+    def __init__(self, **kwargs):
+        """Initializer.
+
+        Arguments are a mapping of attribute names / values."""
+        super().__init__()
+        for attr_name, attr_value in kwargs.items():
+            self.__setattr__(attr_name, attr_value)
 
     @classmethod
     def from_bytes(cls, flow):
@@ -52,7 +65,7 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
         mac = flow[(i + packet_len - 1):]
 
         try:
-            msg_class = cls._msg_types[msg_type]
+            msg_class = cls.known_msg_types[msg_type]
         except KeyError:
             raise Exception("Unknown message type %d" % msg_type)
         else:
@@ -63,7 +76,7 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
                 read_len, parsed_data[fname] = ftype.from_bytes(payload[i:])
                 i += read_len
             # Build the message
-            return cls._msg_types[msg_type](**parsed_data)
+            return cls.known_msg_types[msg_type](**parsed_data)
 
     def to_bytes(self, cipher_block_size=8):
         """Convert the packet to byte flow.
@@ -111,9 +124,7 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
         return "%s<%s>" % (self.__class__.__name__, fields)
 
 
-class KexInit(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
-    msg_type = SshMsgType.SSH_MSG_KEXINIT
-
+class KexInit(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_KEXINIT):
     __slots__ = ('cookie',
                  'kex_algo', 'server_host_key_algo',
                  'encryption_algo_ctos', 'encryption_algo_stoc',
@@ -130,84 +141,39 @@ class KexInit(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
                     NameListType(), NameListType(),
                     BooleanType(), Uint32Type())
 
-    def __init__(self, cookie=b"\x00" * 16,
-                 kex_algo=("ecdh-sha2-nistp256",), server_host_key_algo=("ssh-rsa",),
-                 encryption_algo_ctos=("aes128-ctr",), encryption_algo_stoc=("aes128-ctr",),
-                 mac_algo_ctos=("hmac-sha2-256-etm@openssh.com",), mac_algo_stoc=("hmac-sha2-256-etm@openssh.com",),
-                 compression_algo_ctos=("none",), compression_algo_stoc=("none",),
-                 languages_ctos=(), languages_stoc=(),
-                 first_kex_packet_follows=False, _reserved=0):
-        super(KexInit, self).__init__()
-        self.cookie = cookie
-        self.kex_algo = kex_algo
-        self.server_host_key_algo = server_host_key_algo
-        self.encryption_algo_ctos = encryption_algo_ctos
-        self.encryption_algo_stoc = encryption_algo_stoc
-        self.mac_algo_ctos = mac_algo_ctos
-        self.mac_algo_stoc = mac_algo_stoc
-        self.compression_algo_ctos = compression_algo_ctos
-        self.compression_algo_stoc = compression_algo_stoc
-        self.languages_ctos = languages_ctos
-        self.languages_stoc = languages_stoc
-        self.first_kex_packet_follows = first_kex_packet_follows
-        self._reserved = 0
+    # Specific default value
+    def __init__(self, _reserved=0, **kwargs):
+        super(KexInit, self).__init__(**kwargs)
+        self._reserved = _reserved
 
 
-class NewKeys(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
-    msg_type = SshMsgType.SSH_MSG_NEWKEYS
-
+class NewKeys(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_NEWKEYS):
     __slots__ = ()
-
     _fields_type = ()
 
 
-class KexDHInit(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
-    msg_type = SshMsgType.SSH_MSG_KEX_ECDH_INIT
-
+class KexDHInit(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_KEX_ECDH_INIT):
     __slots__ = ('e',)
-
     _fields_type = (MpintType(),)
 
-    def __init__(self, e):
-        super(KexDHInit, self).__init__()
-        self.e = e
 
-
-class KexDHReply(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
-    msg_type = SshMsgType.SSH_MSG_KEX_ECDH_REPLY
-
+class KexDHReply(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_KEX_ECDH_REPLY):
     __slots__ = ('server_public_key', 'f', 'signature')
-
     _fields_type = (StringType('octet'), MpintType(), StringType('octet'))
 
-    def __init__(self, server_public_key, f, signature):
-        super(KexDHReply, self).__init__()
-        self.server_public_key = server_public_key
-        self.f = f
-        self.signature = signature
 
-
-class UserauthRequest(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
-    msg_type = SshMsgType.SSH_MSG_USERAUTH_REQUEST
-
+class UserauthRequest(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_REQUEST):
     __slots__ = ('user_name', 'service_name', 'method_name')
-
     _fields_type = (StringType('utf-8'), StringType('ascii'), StringType('ascii'))
 
-    def __init__(self, user_name, service_name, method_name):
-        self.user_name = user_name
-        self.service_name = service_name
-        self.method_name = method_name
 
-
-class UserauthPublickeyRequestPacket(UserauthRequest, metaclass=BinarySshPacket.packet_metaclass):
+class UserauthPublickeyRequestPacket(UserauthRequest):
     # FIXME: does inheritance really works?
     __slots__ = ('is_actual_authentication', 'public_key_algorithm_name', 'public_key_blob')
-
     _fields_type = (BooleanType(), StringType('ascii'), StringType('octet'))
 
     def __init__(self, user_name, service_name, is_actual_authentication, public_key_algorithm_name, public_key_blob):
-        super().__init__(user_name, service_name, "publickey")
+        super().__init__(user_name=user_name, service_name=service_name, method_name="publickey")
         self.is_actual_authentication = is_actual_authentication
         self.public_key_algorithm_name = public_key_algorithm_name
         self.public_key_blob = public_key_blob
@@ -237,33 +203,16 @@ class UserauthPublickeyRequestPacket(UserauthRequest, metaclass=BinarySshPacket.
         return message
 
 
-class UserauthFailure(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
-    msg_type = SshMsgType.SSH_MSG_USERAUTH_FAILURE
-
+class UserauthFailure(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_FAILURE):
     __slots__ = ('authentications_that_can_continue', 'partial_success')
-
     _fields_type = (NameListType(), BooleanType())
 
-    def __init__(self, authentications_that_can_continue, partial_success):
-        self.authentications_that_can_continue = authentications_that_can_continue
-        self.partial_success = partial_success
 
-
-class UserauthSuccess(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
-    msg_type = SshMsgType.SSH_MSG_USERAUTH_SUCCESS
-
+class UserauthSuccess(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_SUCCESS):
     __slots__ = ()
-
     _fields_type = ()
 
 
-class UserauthBanner(BinarySshPacket, metaclass=BinarySshPacket.packet_metaclass):
-    msg_type = SshMsgType.SSH_MSG_USERAUTH_BANNER
-
+class UserauthBanner(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_BANNER):
     __slots__ = ('message', 'language_tag')
-
     _fields_type = (StringType('utf-8'), StringType('octet'))  # TODO: read RFC 3066 to decode language_tag
-
-    def __init__(self, message, language_tag):
-        self.message = message
-        self.language_tag = language_tag

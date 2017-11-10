@@ -52,7 +52,14 @@ class SshConnection:
 
         # Key Exchange Init: exchange the supported crypto algorithms
         self.logger.info("Send KEI message")
-        client_kexinit = KexInit(cookie=self.session_id)
+        client_kexinit = KexInit(
+            cookie=self.session_id,
+            kex_algo=("ecdh-sha2-nistp256",), server_host_key_algo=("ssh-rsa",),
+            encryption_algo_ctos=("aes128-ctr",), encryption_algo_stoc=("aes128-ctr",),
+            mac_algo_ctos=("hmac-sha2-256-etm@openssh.com",), mac_algo_stoc=("hmac-sha2-256-etm@openssh.com",),
+            compression_algo_ctos=("none",), compression_algo_stoc=("none",),
+            languages_ctos=(), languages_stoc=(),
+            first_kex_packet_follows=False)
         self.transporter.transmit(client_kexinit)
 
         self.logger.debug("Waiting for server KEI...")
@@ -96,27 +103,13 @@ class SshConnection:
                             MpintType(), MpintType(),
                             MpintType())
 
-            def __init__(self, client_version, server_version,
-                         client_kexinit, server_kexinit,
-                         host_key,
-                         client_exchange_value, server_exchange_value,
-                         shared_secret):
-                self.client_version = client_version
-                self.server_version = server_version
-                self.client_kexinit = client_kexinit
-                self.server_kexinit = server_kexinit
-                self.host_key = host_key
-                self.client_exchange_value = client_exchange_value
-                self.server_exchange_value = server_exchange_value
-                self.shared_secret = shared_secret
-
         # FIXME: not sure these are the correct formula to compute the hash
         to_be_hashed = ExchangeHash(
-            self.client_version, self.server_version,
-            client_kexinit.payload(), server_kexinit.payload(),
-            server_kex_ecdh.server_public_key,
-            client_kex_ecdh.e, server_kex_ecdh.f,
-            shared_secret)
+            client_version=self.client_version, server_version=self.server_version,
+            client_kexinit=client_kexinit.payload(), server_kexinit=server_kexinit.payload(),
+            host_key=server_kex_ecdh.server_public_key,
+            client_exchange_value=client_kex_ecdh.e, server_exchange_value=server_kex_ecdh.f,
+            shared_secret=shared_secret)
 
         key_exchange_hash = hashlib.sha256(to_be_hashed.payload()).digest()
 
