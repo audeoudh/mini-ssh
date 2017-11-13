@@ -52,17 +52,12 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
 
     @classmethod
     def from_bytes(cls, flow):
-        i = 0
-        read_len, packet_len = cls.packet_length_type.from_bytes(flow[i:])
-        i += read_len
-        read_len, padding_length = cls.padding_length_type.from_bytes(flow[i:])
-        i += read_len
-        read_len, msg_type = cls.message_type_type.from_bytes(flow[i:])
-        i += read_len
-        payload = flow[i:(i + packet_len - padding_length - 2)]
-        i += len(payload)
-        i += padding_length
-        mac = flow[(i + packet_len - 1):]
+        flow_iterator = flow.__iter__()
+
+        # Read header
+        packet_len = cls.packet_length_type.from_bytes(flow_iterator)
+        padding_length = cls.padding_length_type.from_bytes(flow_iterator)
+        msg_type = cls.message_type_type.from_bytes(flow_iterator)
 
         try:
             msg_class = cls.known_msg_types[msg_type]
@@ -70,13 +65,20 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
             raise Exception("Unknown message type %d" % msg_type)
         else:
             parsed_data = {}
-            i = 0
             # Parse fields
             for fname, ftype in zip(msg_class.__slots__, msg_class._fields_type):
-                read_len, parsed_data[fname] = ftype.from_bytes(payload[i:])
-                i += read_len
-            # Build the message
-            return cls.known_msg_types[msg_type](**parsed_data)
+                parsed_data[fname] = ftype.from_bytes(flow_iterator)
+
+        # Read padding
+        for _ in range(padding_length):
+            flow_iterator.__next__()
+
+        # Read MAC
+        mac = bytes(b for b in flow_iterator)
+        # TODO: check the MAC
+
+        # Build the message
+        return msg_class(**parsed_data)
 
     def to_bytes(self, cipher_block_size=8):
         """Convert the packet to byte flow.
@@ -154,12 +156,12 @@ class NewKeys(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_NEWKEYS):
 
 class KexDHInit(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_KEX_ECDH_INIT):
     __slots__ = ('e',)
-    _fields_type = (MpintType(),)
+    _fields_type = (StringType('octet'),)
 
 
 class KexDHReply(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_KEX_ECDH_REPLY):
     __slots__ = ('server_public_key', 'f', 'signature')
-    _fields_type = (StringType('octet'), MpintType(), StringType('octet'))
+    _fields_type = (StringType('octet'), StringType('octet'), StringType('octet'))
 
 
 class UserauthRequest(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_REQUEST):
