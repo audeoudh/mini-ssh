@@ -115,15 +115,20 @@ class MpintType(FieldType):
 
     len_field = Uint32Type()
 
-    def from_bytes(self, flow) -> (int, bytes):
+    def from_bytes(self, flow) -> (int, int):
         read_len, mpi_len = self.len_field.from_bytes(flow)
         mpi = flow[read_len:(read_len + mpi_len)]
         read_len += mpi_len
-        return read_len, mpi
+        return read_len, int.from_bytes(mpi, byteorder='big', signed=True)
 
-    def to_bytes(self, value: bytes):
-        length = self.len_field.to_bytes(len(value))
-        return length + value
+    def to_bytes(self, value: int):
+        if value == 0:
+            length = 0
+            data = b""
+        else:
+            length = ((value if value > 0 else value + 1).bit_length() + 8) // 8
+            data = value.to_bytes(length, byteorder='big', signed=True)
+        return self.len_field.to_bytes(length) + data
 
 
 class NameListType(FieldType):

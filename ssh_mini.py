@@ -100,7 +100,7 @@ class SshConnection:
             _fields_type = (StringType('ascii'), StringType('ascii'),
                             StringType('octet'), StringType('octet'),
                             StringType('octet'),
-                            MpintType(), MpintType(),
+                            StringType('octet'), StringType('octet'),
                             MpintType())
 
         # FIXME: not sure these are the correct formula to compute the hash
@@ -109,7 +109,7 @@ class SshConnection:
             client_kexinit=client_kexinit.payload(), server_kexinit=server_kexinit.payload(),
             host_key=server_kex_ecdh.server_public_key,
             client_exchange_value=client_kex_ecdh.e, server_exchange_value=server_kex_ecdh.f,
-            shared_secret=shared_secret)
+            shared_secret=int.from_bytes(shared_secret, 'big', signed=False))
 
         key_exchange_hash = hashlib.sha256(to_be_hashed.payload()).digest()
 
@@ -122,10 +122,7 @@ class SshConnection:
         read_len, rsa_exponent = fields.MpintType().from_bytes(server_kex_ecdh.server_public_key[i:])
         i += read_len
         _, rsa_modulus = fields.MpintType().from_bytes(server_kex_ecdh.server_public_key[i:])
-        server_key = rsa.RSAPublicNumbers(
-            e=int.from_bytes(rsa_exponent, 'big'),
-            n=int.from_bytes(rsa_modulus, 'big')) \
-            .public_key(default_backend())
+        server_key = rsa.RSAPublicNumbers(e=rsa_exponent, n=rsa_modulus).public_key(default_backend())
 
         i = 0
         read_len, key_type = fields.StringType('ascii').from_bytes(server_kex_ecdh.signature[i:])

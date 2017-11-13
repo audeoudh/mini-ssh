@@ -154,12 +154,12 @@ class NewKeys(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_NEWKEYS):
 
 class KexDHInit(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_KEX_ECDH_INIT):
     __slots__ = ('e',)
-    _fields_type = (MpintType(),)
+    _fields_type = (StringType('octet'),)
 
 
 class KexDHReply(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_KEX_ECDH_REPLY):
     __slots__ = ('server_public_key', 'f', 'signature')
-    _fields_type = (StringType('octet'), MpintType(), StringType('octet'))
+    _fields_type = (StringType('octet'), StringType('octet'), StringType('octet'))
 
 
 class UserauthRequest(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_REQUEST):
