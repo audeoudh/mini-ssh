@@ -7,6 +7,8 @@ NETWORK_BYTE_ORDER = 'big'
 
 
 class FieldType(metaclass=abc.ABCMeta):
+    """Generic type for data type representations."""
+
     @abc.abstractmethod
     def from_bytes(self, flow: bytes) -> Any:
         raise NotImplementedError
@@ -17,6 +19,8 @@ class FieldType(metaclass=abc.ABCMeta):
 
 
 class ByteType(FieldType):
+    """A byte: one-byte field converted from and to a Python integer."""
+
     def from_bytes(self, flow) -> (int, int):
         return 1, flow[0]
 
@@ -25,9 +29,12 @@ class ByteType(FieldType):
 
 
 class BytesType(FieldType):
-    # This is the same type as the one defined by Byte; however, as Python
-    # distinguishes between int and bytes, we separate a one-byte field (an
-    # integer) from a n-bytes field.
+    """A multi-byte field converted from and to a python `bytes` object.
+
+    This is the same data type as the one defined by ByteType in the RFC;
+    however, as Python distinguishes between int and bytes, we separate
+    a one-byte field (an integer) from a n-bytes field."""
+
     def __init__(self, length):
         self.length = length
 
@@ -43,6 +50,8 @@ class BytesType(FieldType):
 
 
 class BooleanType(FieldType):
+    """A boolean field."""
+
     def from_bytes(self, flow) -> (int, bool):
         return 1, flow[0] != 0
 
@@ -54,6 +63,8 @@ class BooleanType(FieldType):
 
 
 class Uint32Type(FieldType):
+    """A 4-bytes field, converted from and to a Python integer"""
+
     def from_bytes(self, flow) -> (int, int):
         return 4, int.from_bytes(flow[0:4], NETWORK_BYTE_ORDER, signed=False)
 
@@ -62,6 +73,8 @@ class Uint32Type(FieldType):
 
 
 class Uint64Type(FieldType):
+    """A 8-bytes field, converted from and to a Python integer"""
+
     def from_bytes(self, flow) -> (int, int):
         return 8, int.from_bytes(flow[0:8], NETWORK_BYTE_ORDER, signed=False)
 
@@ -70,14 +83,18 @@ class Uint64Type(FieldType):
 
 
 class StringType(FieldType):
+    """A string field.
+
+    If `encoding` is "octet", the corresponding Python type is `bytes`. Else,
+    the encoding is passed to `.encode` or `.decode` to transform it in a
+    `str`."""
+
     len_field = Uint32Type()
 
     def __init__(self, encoding):
         self.encoding = encoding
 
     def from_bytes(self, flow) -> (int, Union[str, bytes]):
-        """If encoding is "octet", read a raw octet-string and return a bytes object. Or,
-        decode it according to the encoding"""
         read_len, string_size = self.len_field.from_bytes(flow)
         string = flow[read_len:(read_len + string_size)]
         if self.encoding != "octet":
@@ -94,6 +111,8 @@ class StringType(FieldType):
 
 
 class MpintType(FieldType):
+    """A multi-bytes field, converted from and to a Python integer"""
+
     len_field = Uint32Type()
 
     def from_bytes(self, flow) -> (int, bytes):
@@ -108,6 +127,10 @@ class MpintType(FieldType):
 
 
 class NameListType(FieldType):
+    """A field containing a list of names.
+
+    This field is converted from and to a Python list of strings."""
+
     len_field = Uint32Type()
 
     def from_bytes(self, flow) -> (int, list):
