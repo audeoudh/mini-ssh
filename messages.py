@@ -76,7 +76,7 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
                 read_len, parsed_data[fname] = ftype.from_bytes(payload[i:])
                 i += read_len
             # Build the message
-            return cls.known_msg_types[msg_type](**parsed_data)
+            return msg_class(**parsed_data)
 
     def to_bytes(self, cipher_block_size=8):
         """Convert the packet to byte flow.
