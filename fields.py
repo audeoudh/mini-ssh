@@ -21,8 +21,8 @@ class FieldType(metaclass=abc.ABCMeta):
 class ByteType(FieldType):
     """A byte: one-byte field converted from and to a Python integer."""
 
-    def from_bytes(self, flow) -> (int, int):
-        return 1, flow[0]
+    def from_bytes(self, flow: "iterator of bytes") -> int:
+        return flow.__next__()
 
     def to_bytes(self, value: int):
         return value.to_bytes(1, NETWORK_BYTE_ORDER)
@@ -38,8 +38,9 @@ class BytesType(FieldType):
     def __init__(self, length):
         self.length = length
 
-    def from_bytes(self, flow) -> (int, bytes):
-        return self.length, flow[:self.length]
+    def from_bytes(self, flow) -> bytes:
+        bytes_ = bytes(flow.__next__() for _ in range(self.length))
+        return bytes_
 
     def to_bytes(self, value: bytes):
         if len(value) == self.length:
@@ -52,8 +53,8 @@ class BytesType(FieldType):
 class BooleanType(FieldType):
     """A boolean field."""
 
-    def from_bytes(self, flow) -> (int, bool):
-        return 1, flow[0] != 0
+    def from_bytes(self, flow) -> bool:
+        return flow.__next__() != 0
 
     def to_bytes(self, value: bool):
         if value:
@@ -65,8 +66,9 @@ class BooleanType(FieldType):
 class Uint32Type(FieldType):
     """A 4-bytes field, converted from and to a Python integer"""
 
-    def from_bytes(self, flow) -> (int, int):
-        return 4, int.from_bytes(flow[0:4], NETWORK_BYTE_ORDER, signed=False)
+    def from_bytes(self, flow) -> int:
+        uint = bytes(flow.__next__() for _ in range(4))
+        return int.from_bytes(uint, NETWORK_BYTE_ORDER, signed=False)
 
     def to_bytes(self, value: int):
         return value.to_bytes(4, NETWORK_BYTE_ORDER, signed=False)
@@ -75,8 +77,9 @@ class Uint32Type(FieldType):
 class Uint64Type(FieldType):
     """A 8-bytes field, converted from and to a Python integer"""
 
-    def from_bytes(self, flow) -> (int, int):
-        return 8, int.from_bytes(flow[0:8], NETWORK_BYTE_ORDER, signed=False)
+    def from_bytes(self, flow) -> int:
+        uint = bytes(flow.__next__() for _ in range(8))
+        return int.from_bytes(uint, NETWORK_BYTE_ORDER, signed=False)
 
     def to_bytes(self, value: int):
         return value.to_bytes(8, NETWORK_BYTE_ORDER, signed=False)
@@ -94,13 +97,12 @@ class StringType(FieldType):
     def __init__(self, encoding):
         self.encoding = encoding
 
-    def from_bytes(self, flow) -> (int, Union[str, bytes]):
-        read_len, string_size = self.len_field.from_bytes(flow)
-        string = flow[read_len:(read_len + string_size)]
+    def from_bytes(self, flow) -> Union[str, bytes]:
+        string_len = self.len_field.from_bytes(flow)
+        string = bytes(flow.__next__() for _ in range(string_len))
         if self.encoding != "octet":
             string = string.decode(self.encoding)
-        read_len += string_size
-        return read_len, string
+        return string
 
     def to_bytes(self, value: Union[str, bytes]):
         length = self.len_field.to_bytes(len(value))
@@ -115,11 +117,10 @@ class MpintType(FieldType):
 
     len_field = Uint32Type()
 
-    def from_bytes(self, flow) -> (int, int):
-        read_len, mpi_len = self.len_field.from_bytes(flow)
-        mpi = flow[read_len:(read_len + mpi_len)]
-        read_len += mpi_len
-        return read_len, int.from_bytes(mpi, byteorder='big', signed=True)
+    def from_bytes(self, flow) -> int:
+        mpi_len = self.len_field.from_bytes(flow)
+        mpi = bytes(flow.__next__() for _ in range(mpi_len))
+        return int.from_bytes(mpi, byteorder='big', signed=True)
 
     def to_bytes(self, value: int):
         if value == 0:
@@ -138,11 +139,11 @@ class NameListType(FieldType):
 
     len_field = Uint32Type()
 
-    def from_bytes(self, flow) -> (int, list):
-        read_len, list_len = self.len_field.from_bytes(flow)
-        list_ = flow[read_len:(read_len + list_len)].decode("ascii").split(",")
-        read_len += list_len
-        return read_len, list_
+    def from_bytes(self, flow) -> list:
+        list_len = self.len_field.from_bytes(flow)
+        list_ = bytes(flow.__next__() for _ in range(list_len))
+        list_ = list_.decode("ascii").split(",")
+        return list_
 
     def to_bytes(self, value: list):
         list_ = ",".join(value).encode("ascii")

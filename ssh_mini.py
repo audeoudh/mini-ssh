@@ -115,24 +115,20 @@ class SshConnection:
         key_exchange_hash = hashlib.sha256(to_be_hashed.payload()).digest()
 
         # Verify server's signature
-        i = 0
-        read_len, key_type = fields.StringType('ascii').from_bytes(server_kex_ecdh.server_public_key[i:])
+        server_public_key_iterator = server_kex_ecdh.server_public_key.__iter__()
+        key_type = fields.StringType('ascii').from_bytes(server_public_key_iterator)
         # TODO: support other key types. Here, only ssh-rsa keys are supported.
         assert key_type == 'ssh-rsa'
-        i += read_len
-        read_len, rsa_exponent = fields.MpintType().from_bytes(server_kex_ecdh.server_public_key[i:])
-        i += read_len
-        _, rsa_modulus = fields.MpintType().from_bytes(server_kex_ecdh.server_public_key[i:])
+        rsa_exponent = fields.MpintType().from_bytes(server_public_key_iterator)
+        rsa_modulus = fields.MpintType().from_bytes(server_public_key_iterator)
         server_key = rsa.RSAPublicNumbers(e=rsa_exponent, n=rsa_modulus).public_key(default_backend())
 
-        i = 0
-        read_len, key_type = fields.StringType('ascii').from_bytes(server_kex_ecdh.signature[i:])
+        server_signature_iterator = server_kex_ecdh.signature.__iter__()
+        key_type = fields.StringType('ascii').from_bytes(server_signature_iterator)
         # TODO: support other key types. Here, only ssh-rsa keys are supported.
         assert key_type == 'ssh-rsa'
-        i += read_len
-        _, signature = fields.StringType('octet').from_bytes(server_kex_ecdh.signature[i:])
+        signature = fields.StringType('octet').from_bytes(server_signature_iterator)
 
-        # Verify the signature
         server_key.verify(signature, key_exchange_hash, padding.PKCS1v15(), hashes.SHA1())
 
         # New Keys: switch to the new cyphering method
