@@ -103,10 +103,11 @@ class SshConnection:
                             StringType('octet'), StringType('octet'),
                             MpintType())
 
-        # FIXME: not sure these are the correct formula to compute the hash
+        client_kexinit_bytes = client_kexinit.msg_type.to_bytes(1, 'big') + client_kexinit.payload()
+        server_kexinit_bytes = server_kexinit.msg_type.to_bytes(1, 'big') + server_kexinit.payload()
         to_be_hashed = ExchangeHash(
             client_version=self.client_version, server_version=self.server_version,
-            client_kexinit=client_kexinit.payload(), server_kexinit=server_kexinit.payload(),
+            client_kexinit=client_kexinit_bytes, server_kexinit=server_kexinit_bytes,
             host_key=server_kex_ecdh.server_public_key,
             client_exchange_value=client_kex_ecdh.e, server_exchange_value=server_kex_ecdh.f,
             shared_secret=int.from_bytes(shared_secret, 'big', signed=False))
