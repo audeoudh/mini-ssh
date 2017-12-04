@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 import fields
 import hash_algos
 from messages import *
-from transport import Transporter
+from transport import Transport
 
 
 class SshConnection:
@@ -22,7 +22,7 @@ class SshConnection:
         self.user_name = user_name
         self.server_name = server_name
         self.port = port
-        self.transporter = None
+        self.socket = None
         self._session_id = None
 
     @property
@@ -32,7 +32,8 @@ class SshConnection:
 
     def __enter__(self):
         # Start transport layer
-        self.transporter = Transporter(self.server_name, self.port)
+        self.socket = Transport()
+        self.socket.connect((self.server_name, self.port))
 
         # Compute the session identifier
 
@@ -51,7 +52,7 @@ class SshConnection:
         self._close()
 
     def _version(self):
-        self.server_version = self.transporter.exchange_versions(self.client_version)
+        self.server_version = self.socket.exchange_versions(self.client_version)
 
     def _key_exchange(self):
         """Do a whole key exchange, as described in RFC 4253"""
@@ -70,8 +71,8 @@ class SshConnection:
             compression_algo_ctos=("none",), compression_algo_stoc=("none",),
             languages_ctos=(), languages_stoc=(),
             first_kex_packet_follows=False)
-        self.transporter.transmit(client_kexinit)
-        server_kexinit = self.transporter.receive()
+        self.socket.send_ssh_msg(client_kexinit)
+        server_kexinit = self.socket.recv_ssh_msg()
         if not isinstance(server_kexinit, KexInit):
             raise Exception("First packet is not a KEI packet")
         self.logger.info("Key Exchange Init phase: ok")
@@ -79,8 +80,8 @@ class SshConnection:
         # Key Exchange Diffie-Hellman: create a shared secret
         client_kex_ecdh = KexDHInit(
             e=self._ephemeral_private_key.public_key().public_numbers().encode_point())
-        self.transporter.transmit(client_kex_ecdh)
-        server_kex_ecdh = self.transporter.receive()
+        self.socket.send_ssh_msg(client_kex_ecdh)
+        server_kex_ecdh = self.socket.recv_ssh_msg()
         if not isinstance(server_kex_ecdh, KexDHReply):
             raise Exception("not a KEXDH_REPLY packet")
 
@@ -149,13 +150,13 @@ class SshConnection:
         self.logger.info("Server signature verification: ok")
 
         # New Keys: switch to the new cyphering method
-        self.transporter.transmit(NewKeys())
-        nk = self.transporter.receive()
+        self.socket.send_ssh_msg(NewKeys())
+        nk = self.socket.recv_ssh_msg()
         if not isinstance(nk, NewKeys):
             raise Exception("not a NEWKEYS packet")
 
         # Activate the encryption
-        self.transporter.change_keys(kex_hash_algo, shared_secret, key_exchange_hash, self.session_id)
+        self.socket.change_keys(kex_hash_algo, shared_secret, key_exchange_hash, self.session_id)
         self.logger.info("Keys and algorithms change: ok")
 
     def _authenticate(self):
@@ -163,8 +164,8 @@ class SshConnection:
 
         # Request the authentication service
         service_request = ServiceRequest(service_name=ServiceName.USERAUTH)
-        self.transporter.transmit(service_request)
-        service_accept = self.transporter.receive()
+        self.socket.send_ssh_msg(service_request)
+        service_accept = self.socket.recv_ssh_msg()
         if not isinstance(service_accept, ServiceAccept):
             raise Exception("not a ServiceAccept message")
         if service_request.service_name != service_accept.service_name:
@@ -176,8 +177,8 @@ class SshConnection:
         userauth_request = UserauthRequestNone(
             user_name=self.user_name,
             service_name=ServiceName.CONNECTION)
-        self.transporter.transmit(userauth_request)
-        userauth_reply = self.transporter.receive()
+        self.socket.send_ssh_msg(userauth_request)
+        userauth_reply = self.socket.recv_ssh_msg()
         if not isinstance(userauth_reply, (UserauthFailure, UserauthSuccess)):
             raise Exception("Unexpected packet type here!")
 
@@ -198,8 +199,8 @@ class SshConnection:
                 method_name=MethodName.PASSWORD,
                 change_password=False,
                 password=the_password)
-            self.transporter.transmit(userauth_request)
-            userauth_reply = self.transporter.receive()
+            self.socket.send_ssh_msg(userauth_request)
+            userauth_reply = self.socket.recv_ssh_msg()
             if not isinstance(userauth_reply, (UserauthFailure, UserauthSuccess)):
                 raise Exception("Unexpected packet type here!")
 
@@ -208,7 +209,7 @@ class SshConnection:
                 return
 
     def _close(self):
-        self.transporter.close()
+        self.socket.close()
 
 
 @click.command()

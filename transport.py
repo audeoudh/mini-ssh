@@ -7,18 +7,18 @@ import mac_algos
 from messages import BinarySshPacket
 
 
-class Transporter:
+class Transport(socket.socket):
+    """Implements all the SSH transport layer, as defined in RFC4253.
+
+    This is a socket as a TCP one, but that send & receive BinarySshPacket
+    tokens. It supports encryption & MAC verification."""
+
     logger = logging.getLogger(__name__)
     msg_logger = logging.getLogger(__name__ + '.msg')
 
-    def __init__(self, server_name, server_port):
-        self.server_port = server_port
-        self.server_name = server_name
-
-        # Init TCP Channel
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.connect((self.server_name, self.server_port))
-        self.logger.info("TCP connection to %s:%d established" % (self.server_name, self.server_port))
+    def __init__(self):
+        super().__init__(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_name, self.server_port = None, None
 
         # Initialize ciphering and integrity checks
         self._ctos_cipher = cipher_algos.NoneCipher()
@@ -28,18 +28,25 @@ class Transporter:
         self._stoc_mac_algo = mac_algos.NoneMAC()
         self._stoc_sequence_number = 0
 
+    def connect(self, address):
+        self.server_name, self.server_port = address
+        super().connect((self.server_name, self.server_port))
+        self.logger.info("TCP connection to %s:%d established" % (self.server_name, self.server_port))
+
     def exchange_versions(self, client_version):
-        """Send and receive the SSH protocol and software versions"""
+        """Send and receive the SSH protocol and software versions
+
+        :return The server version"""
 
         self.logger.info("Send client version: %s" % client_version)
-        self.socket.send((client_version + "\r\n").encode("utf-8"))
+        self.send((client_version + "\r\n").encode("utf-8"))
 
         self.logger.debug("Waiting for server version...")
         # Reading a line, until "\r\n"
         version = b""
         previous = b""
         while True:
-            current = self.socket.recv(1)
+            current = self.recv(1)
             # The identification MUST be terminated by a single Carriage Return
             # (CR) and a single Line Feed (LF) character (ASCII 13 and 10,
             # respectively).
@@ -58,7 +65,10 @@ class Transporter:
 
         return server_version
 
-    def transmit(self, msg: BinarySshPacket):
+    def send_ssh_msg(self, msg: BinarySshPacket):
+        """Send a packet.
+
+        :param msg: The SSH message to be sent"""
         # Format packet
         self.msg_logger.info("Outgoing %s" % msg)
         payload = msg.to_bytes(cipher_block_size=self._ctos_cipher.block_size)
@@ -73,15 +83,24 @@ class Transporter:
             self._ctos_sequence_number = 0
 
         # Send data
-        self.socket.send(packet)
+        self.send(packet)
 
-    def receive(self) -> BinarySshPacket:
+    def recv_ssh_msg(self) -> BinarySshPacket:
+        """Receive a SSH packet.
+
+        :return The received packet, or None if no packet is available (this
+          may happen even if the socket is readable: some TCP data may have
+          been read without a full SSH packet be available).
+
+        :raise Exception if the connection is closed while reading a packet.
+
+        :raise Exception if the MAC is wrong."""
         block_size = max(8, self._stoc_cipher.block_size)
 
         # Receive packet length
         encrypted_data = b""
         while len(encrypted_data) < block_size:
-            recv = self.socket.recv(block_size - len(encrypted_data))
+            recv = self.recv(block_size - len(encrypted_data))
             if len(recv) == 0:
                 raise Exception("No more data in TCP stream; ssh packet expected")
             encrypted_data += recv
@@ -90,7 +109,7 @@ class Transporter:
 
         # Receive data
         while len(encrypted_data) < p_len + 4:
-            recv = self.socket.recv(p_len + 4 - len(encrypted_data))
+            recv = self.recv(p_len + 4 - len(encrypted_data))
             if len(recv) == 0:
                 raise Exception("No more data in TCP stream; ssh packet expected")
             encrypted_data += recv
@@ -99,7 +118,7 @@ class Transporter:
         # Receive mac & check it
         msg_mac = b""
         while len(msg_mac) < self._stoc_mac_algo.mac_length:
-            recv = self.socket.recv(self._stoc_mac_algo.mac_length - len(msg_mac))
+            recv = self.recv(self._stoc_mac_algo.mac_length - len(msg_mac))
             if len(recv) == 0:
                 raise Exception("No more data in TCP stream; ssh packet expected")
             msg_mac += recv
@@ -116,6 +135,7 @@ class Transporter:
         return ssh_packet
 
     def change_keys(self, kex_hash_algo, shared_secret, key_exchange_hash, session_id):
+        """Renew the crypto keys and algorithms."""
         shared_secret = fields.MpintType().to_bytes(int.from_bytes(shared_secret, 'big', signed=False))
         ctos_iv = kex_hash_algo.hash(
             shared_secret + key_exchange_hash + b"A" + session_id)
@@ -134,6 +154,3 @@ class Transporter:
         self._ctos_mac_algo = mac_algos.HmacSha2_256(ctos_integrity_key)
         self._stoc_cipher = cipher_algos.Aes128Ctr(stoc_iv, stoc_encryption_key)
         self._stoc_mac_algo = mac_algos.HmacSha2_256(stoc_integrity_key)
-
-    def close(self):
-        self.socket.close()
