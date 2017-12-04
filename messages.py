@@ -1,6 +1,7 @@
 # Implementation of SSH messages types. See All RFCs 4251, 4252, 4253 for
 # their description.
 
+import itertools
 from enum import IntEnum, Enum
 
 from fields import *
@@ -62,9 +63,10 @@ class MethodName(str, Enum):
 class BinarySshPacket(metaclass=abc.ABCMeta):
     known_msg_types = {}
 
-    __slots__ = ('mac', 'msg_type')
+    __slots__ = ('mac', 'message_length', 'padding_length', 'msg_type')
 
-    _fields_type = (None, ByteType)
+    _fields_type = (None, # Not parsed at all
+                    None, None, None)   # Manually parsed fields
 
     packet_length_type = Uint32Type()
     padding_length_type = ByteType()
@@ -109,8 +111,13 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
         else:
             parsed_data = {}
             # Parse fields
-            for fname, ftype in zip(msg_class.__slots__, msg_class._fields_type):
-                parsed_data[fname] = ftype.from_bytes(flow_iterator)
+            for fname, ftype in zip(
+                    itertools.chain.from_iterable(getattr(cls, '__slots__', [])
+                                                  for cls in reversed(msg_class.__mro__)),
+                    itertools.chain.from_iterable(getattr(cls, '_fields_type', [])
+                                                  for cls in reversed(msg_class.__mro__))):
+                if ftype is not None:
+                    parsed_data[fname] = ftype.from_bytes(flow_iterator)
 
         # Read padding
         for _ in range(padding_length):
@@ -159,8 +166,13 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
         payload part of the SSH packet: no length, no padding, no mac…
         """
         message = b""
-        for fname, ftype in zip(self.__slots__, self._fields_type):
-            message += ftype.to_bytes(self.__getattribute__(fname))
+        for fname, ftype in zip(
+                itertools.chain.from_iterable(getattr(cls, '__slots__', [])
+                                              for cls in reversed(self.__class__.__mro__)),
+                itertools.chain.from_iterable(getattr(cls, '_fields_type', [])
+                                              for cls in reversed(self.__class__.__mro__))):
+            if ftype is not None:
+                message += ftype.to_bytes(self.__getattribute__(fname))
         return message
 
     def __repr__(self):
@@ -264,9 +276,9 @@ class UserauthRequest(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_REQU
     _fields_type = (StringType('utf-8'), StringType('ascii'), StringType('ascii'))
 
 
-class UserauthRequestNone(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_REQUEST):
-    __slots__ = ('user_name', 'service_name', 'method_name')
-    _fields_type = (StringType('utf-8'), StringType('ascii'), StringType('ascii'))
+class UserauthRequestNone(UserauthRequest):
+    __slots__ = ()
+    _fields_type = ()
 
     def __init__(self, method_name=None, **kwargs):
         if method_name is not None and method_name != MethodName.NONE:
@@ -274,11 +286,9 @@ class UserauthRequestNone(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_
         super().__init__(method_name=MethodName.NONE, **kwargs)
 
 
-class UserauthRequestPassword(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_REQUEST):
-    __slots__ = ('user_name', 'service_name', 'method_name',
-                 'change_password', 'password')
-    _fields_type = (StringType('utf-8'), StringType('ascii'), StringType('ascii'),
-                    BooleanType(), StringType('utf-8'))
+class UserauthRequestPassword(UserauthRequest):
+    __slots__ = ('change_password', 'password')
+    _fields_type = (BooleanType(), StringType('utf-8'))
 
     def __init__(self, method_name, change_password, **kwargs):
         if method_name is not None and method_name != "password":
