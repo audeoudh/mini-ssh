@@ -103,9 +103,7 @@ class Transporter:
             if len(recv) == 0:
                 raise Exception("No more data in TCP stream; ssh packet expected")
             msg_mac += recv
-        if not self._stoc_mac_algo.check_mac(
-                        self._stoc_sequence_number.to_bytes(4, 'big') + payload, msg_mac):
-            raise Exception("Integrity check fails")
+        self._stoc_mac_algo.check_mac(self._stoc_sequence_number.to_bytes(4, 'big') + payload, msg_mac)
 
         # Increase sequence number
         self._stoc_sequence_number += 1
