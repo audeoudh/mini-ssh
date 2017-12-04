@@ -102,7 +102,10 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
         try:
             msg_class = cls.known_msg_types[msg_type]
         except KeyError:
-            raise Exception("Unknown message type %d" % msg_type)
+            try:
+                raise Exception("Unparsable message %s" % SshMsgType(msg_type).name)
+            except ValueError:
+                raise Exception("Unknown message type %d" % msg_type)
         else:
             parsed_data = {}
             # Parse fields
