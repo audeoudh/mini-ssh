@@ -1,22 +1,62 @@
 # Implementation of SSH messages types. See All RFCs 4251, 4252, 4253 for
 # their description.
 
-from enum import IntEnum
+from enum import IntEnum, Enum
 
 from fields import *
 
 
 class SshMsgType(IntEnum):
+    # Transport layer protocol
+    #   Transport layer generic
+    SSH_MSG_DISCONNECT = 1
+    SSH_MSG_IGNORE = 2
+    SSH_MSG_UNIMPLEMENTED = 3
+    SSH_MSG_DEBUG = 4
+    SSH_MSG_SERVICE_REQUEST = 5
+    SSH_MSG_SERVICE_ACCEPT = 6
+    #   Algorithm negotiation
     SSH_MSG_KEXINIT = 20
     SSH_MSG_NEWKEYS = 21
-
+    #   Key exchange method specific. FIXME: really set these types there?
     SSH_MSG_KEX_ECDH_INIT = 30
     SSH_MSG_KEX_ECDH_REPLY = 31
 
+    # User authentication protocol
+    #   User authentication generic
     SSH_MSG_USERAUTH_REQUEST = 50
     SSH_MSG_USERAUTH_FAILURE = 51
     SSH_MSG_USERAUTH_SUCCESS = 52
     SSH_MSG_USERAUTH_BANNER = 53
+
+    # Connection protocol
+    #   Connection protocol generic
+    SSH_MSG_GLOBAL_REQUEST = 80
+    SSH_MSG_REQUEST_SUCCESS = 81
+    SSH_MSG_REQUEST_FAILURE = 82
+    #   Channel related messages
+    SSH_MSG_CHANNEL_OPEN = 90
+    SSH_MSG_CHANNEL_OPEN_CONFIRMATION = 91
+    SSH_MSG_CHANNEL_OPEN_FAILURE = 92
+    SSH_MSG_CHANNEL_WINDOW_ADJUST = 93
+    SSH_MSG_CHANNEL_DATA = 94
+    SSH_MSG_CHANNEL_EXTENDED_DATA = 95
+    SSH_MSG_CHANNEL_EOF = 96
+    SSH_MSG_CHANNEL_CLOSE = 97
+    SSH_MSG_CHANNEL_REQUEST = 98
+    SSH_MSG_CHANNEL_SUCCESS = 99
+    SSH_MSG_CHANNEL_FAILURE = 100
+
+
+class ServiceName(str, Enum):
+    USERAUTH = "ssh-userauth"
+    CONNECTION = "ssh-connection"
+
+
+class MethodName(str, Enum):
+    NONE = "none"
+    PASSWORD = "password"
+    PUBLICKEY = "publickey"
 
 
 class BinarySshPacket(metaclass=abc.ABCMeta):
@@ -62,7 +102,10 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
         try:
             msg_class = cls.known_msg_types[msg_type]
         except KeyError:
-            raise Exception("Unknown message type %d" % msg_type)
+            try:
+                raise Exception("Unparsable message %s" % SshMsgType(msg_type).name)
+            except ValueError:
+                raise Exception("Unknown message type %d" % msg_type)
         else:
             parsed_data = {}
             # Parse fields
@@ -120,10 +163,52 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
             message += ftype.to_bytes(self.__getattribute__(fname))
         return message
 
-    def __str__(self):
+    def __repr__(self):
         fields = ("%s=%r" % (fname, self.__getattribute__(fname)) for fname in self.__slots__)
         fields = ', '.join(fields)
         return "%s<%s>" % (self.__class__.__name__, fields)
+
+    def __str__(self):
+        return "%s" % self.__class__.__name__
+
+
+class Disconnect(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_DISCONNECT):
+    class ReasonCode(IntEnum):
+        HOST_NOT_ALLOWED_TO_CONNECT = 1
+        PROTOCOL_ERROR = 2
+        KEY_EXCHANGE_FAILED = 3
+        RESERVED = 4
+        MAC_ERROR = 5
+        COMPRESSION_ERROR = 6
+        SERVICE_NOT_AVAILABLE = 7
+        PROTOCOL_VERSION_NOT_SUPPORTED = 8
+        HOST_KEY_NOT_VERIFIABLE = 9
+        CONNECTION_LOST = 10
+        BY_APPLICATION = 11
+        TOO_MANY_CONNECTIONS = 12
+        AUTH_CANCELLED_BY_USER = 13
+        NO_MORE_AUTH_METHODS_AVAILABLE = 14
+        ILLEGAL_USER_NAME = 15
+
+    __slots__ = ('reason_code', 'description', 'language_tag')
+    _fields_type = (Uint32Type(), StringType('utf-8'), StringType('octet'))
+    # TODO: read RFC 3066 to decode language_tag
+
+
+class Ignore(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_IGNORE):
+    __slots__ = ('data',)
+    _fields_type = (None,)
+
+
+class Unimplemented(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_UNIMPLEMENTED):
+    __slots__ = ('packet_sequence_number',)
+    _fields_type = (Uint32Type())
+
+
+class Debug(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_DEBUG):
+    __slots__ = ('always_display', 'message', 'language_tag')
+    _fields_type = (BooleanType(), StringType('utf-8'), StringType('octet'))
+    # TODO: read RFC 3066 to decode language_tag
 
 
 class KexInit(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_KEXINIT):

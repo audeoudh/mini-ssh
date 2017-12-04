@@ -1,4 +1,3 @@
-import hashlib
 import logging
 import os
 
@@ -8,6 +7,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
 import fields
+import hash_algos
 from messages import *
 from transport import Transporter
 
@@ -22,13 +22,18 @@ class SshConnection:
         self.server_name = server_name
         self.port = port
         self.transporter = None
+        self._session_id = None
+
+    @property
+    def session_id(self):
+        """The session identifier. If the session is not currently initialized, None."""
+        return self._session_id
 
     def __enter__(self):
         # Start transport layer
         self.transporter = Transporter(self.server_name, self.port)
 
         # Compute the session identifier
-        self.session_id = os.urandom(16)
 
         # Server's ephemeral public key param
         self.point_encoded_server_epub = None
@@ -48,35 +53,36 @@ class SshConnection:
 
     def _key_exchange(self):
         """Do a whole key exchange, as described in RFC 4253"""
+        self.logger.info("Exchange key mechanism activated...")
+
+        # Compute some locally chosen values
         self._ephemeral_private_key = ec.generate_private_key(ec.SECP256R1, default_backend())
+        cookie = os.urandom(16)
 
         # Key Exchange Init: exchange the supported crypto algorithms
-        self.logger.info("Send KEI message")
         client_kexinit = KexInit(
-            cookie=self.session_id,
+            cookie=cookie,
             kex_algo=("ecdh-sha2-nistp256",), server_host_key_algo=("ssh-rsa",),
             encryption_algo_ctos=("aes128-ctr",), encryption_algo_stoc=("aes128-ctr",),
-            mac_algo_ctos=("hmac-sha2-256-etm@openssh.com",), mac_algo_stoc=("hmac-sha2-256-etm@openssh.com",),
+            mac_algo_ctos=("hmac-sha2-256",), mac_algo_stoc=("hmac-sha2-256",),
             compression_algo_ctos=("none",), compression_algo_stoc=("none",),
             languages_ctos=(), languages_stoc=(),
             first_kex_packet_follows=False)
         self.transporter.transmit(client_kexinit)
-
-        self.logger.debug("Waiting for server KEI...")
         server_kexinit = self.transporter.receive()
         if not isinstance(server_kexinit, KexInit):
             raise Exception("First packet is not a KEI packet")
+        self.logger.info("Key Exchange Init phase: ok")
 
         # Key Exchange Diffie-Hellman: create a shared secret
-        self.logger.info("Send KEX_ECDH_INIT message")
         client_kex_ecdh = KexDHInit(
             e=self._ephemeral_private_key.public_key().public_numbers().encode_point())
         self.transporter.transmit(client_kex_ecdh)
-
-        self.logger.debug("Waiting for server's KEXDH_REPLY")
         server_kex_ecdh = self.transporter.receive()
         if not isinstance(server_kex_ecdh, KexDHReply):
             raise Exception("not a KEXDH_REPLY packet")
+
+        kex_hash_algo = hash_algos.EcdhSha2Nistp256()  # Currently forced. TODO: make it modifiable
 
         # construct a 'public key' object from the received server public key
         curve = ec.SECP256R1()
@@ -86,6 +92,7 @@ class SshConnection:
 
         # multiply server's ephemeral public key with client's ephemeral private key --> shared secret
         shared_secret = self._ephemeral_private_key.exchange(ec.ECDH(), self._server_ephemeral_public_key)
+        self.logger.info("Key Exchange Diffie-Hellman phase: ok")
 
         # Compute exchange hash
         class ExchangeHash(BinarySshPacket):
@@ -111,8 +118,15 @@ class SshConnection:
             host_key=server_kex_ecdh.server_public_key,
             client_exchange_value=client_kex_ecdh.e, server_exchange_value=server_kex_ecdh.f,
             shared_secret=int.from_bytes(shared_secret, 'big', signed=False))
+        key_exchange_hash = kex_hash_algo.hash(to_be_hashed.payload())
 
-        key_exchange_hash = hashlib.sha256(to_be_hashed.payload()).digest()
+        # Set the session ID:
+        # > The exchange hash H from the first key exchange is additionally
+        # > used as the session identifier [...] Once computed, the session
+        # > identifier is not changed, even if keys are later re-exchanged
+        # > [RFC4253]
+        if self._session_id is None:
+            self._session_id = key_exchange_hash
 
         # Verify server's signature
         server_public_key_iterator = server_kex_ecdh.server_public_key.__iter__()
@@ -130,17 +144,17 @@ class SshConnection:
         signature = fields.StringType('octet').from_bytes(server_signature_iterator)
 
         server_key.verify(signature, key_exchange_hash, padding.PKCS1v15(), hashes.SHA1())
+        self.logger.info("Server signature verification: ok")
 
         # New Keys: switch to the new cyphering method
-        self.logger.info("Send NEWKEYS")
         self.transporter.transmit(NewKeys())
-
         nk = self.transporter.receive()
         if not isinstance(nk, NewKeys):
             raise Exception("not a NEWKEYS packet")
 
         # Activate the encryption
-        self.shared_secret = shared_secret
+        self.transporter.change_keys(kex_hash_algo, shared_secret, key_exchange_hash, self.session_id)
+        self.logger.info("Keys and algorithms change: ok")
 
     def _close(self):
         self.transporter.close()
