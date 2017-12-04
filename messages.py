@@ -10,43 +10,43 @@ from fields import *
 class SshMsgType(IntEnum):
     # Transport layer protocol
     #   Transport layer generic
-    SSH_MSG_DISCONNECT = 1
-    SSH_MSG_IGNORE = 2
-    SSH_MSG_UNIMPLEMENTED = 3
-    SSH_MSG_DEBUG = 4
-    SSH_MSG_SERVICE_REQUEST = 5
-    SSH_MSG_SERVICE_ACCEPT = 6
+    DISCONNECT = 1
+    IGNORE = 2
+    UNIMPLEMENTED = 3
+    DEBUG = 4
+    SERVICE_REQUEST = 5
+    SERVICE_ACCEPT = 6
     #   Algorithm negotiation
-    SSH_MSG_KEXINIT = 20
-    SSH_MSG_NEWKEYS = 21
+    KEXINIT = 20
+    NEWKEYS = 21
     #   Key exchange method specific. FIXME: really set these types there?
-    SSH_MSG_KEX_ECDH_INIT = 30
-    SSH_MSG_KEX_ECDH_REPLY = 31
+    KEX_ECDH_INIT = 30
+    KEX_ECDH_REPLY = 31
 
     # User authentication protocol
     #   User authentication generic
-    SSH_MSG_USERAUTH_REQUEST = 50
-    SSH_MSG_USERAUTH_FAILURE = 51
-    SSH_MSG_USERAUTH_SUCCESS = 52
-    SSH_MSG_USERAUTH_BANNER = 53
+    USERAUTH_REQUEST = 50
+    USERAUTH_FAILURE = 51
+    USERAUTH_SUCCESS = 52
+    USERAUTH_BANNER = 53
 
     # Connection protocol
     #   Connection protocol generic
-    SSH_MSG_GLOBAL_REQUEST = 80
-    SSH_MSG_REQUEST_SUCCESS = 81
-    SSH_MSG_REQUEST_FAILURE = 82
+    GLOBAL_REQUEST = 80
+    REQUEST_SUCCESS = 81
+    REQUEST_FAILURE = 82
     #   Channel related messages
-    SSH_MSG_CHANNEL_OPEN = 90
-    SSH_MSG_CHANNEL_OPEN_CONFIRMATION = 91
-    SSH_MSG_CHANNEL_OPEN_FAILURE = 92
-    SSH_MSG_CHANNEL_WINDOW_ADJUST = 93
-    SSH_MSG_CHANNEL_DATA = 94
-    SSH_MSG_CHANNEL_EXTENDED_DATA = 95
-    SSH_MSG_CHANNEL_EOF = 96
-    SSH_MSG_CHANNEL_CLOSE = 97
-    SSH_MSG_CHANNEL_REQUEST = 98
-    SSH_MSG_CHANNEL_SUCCESS = 99
-    SSH_MSG_CHANNEL_FAILURE = 100
+    CHANNEL_OPEN = 90
+    CHANNEL_OPEN_CONFIRMATION = 91
+    CHANNEL_OPEN_FAILURE = 92
+    CHANNEL_WINDOW_ADJUST = 93
+    CHANNEL_DATA = 94
+    CHANNEL_EXTENDED_DATA = 95
+    CHANNEL_EOF = 96
+    CHANNEL_CLOSE = 97
+    CHANNEL_REQUEST = 98
+    CHANNEL_SUCCESS = 99
+    CHANNEL_FAILURE = 100
 
 
 class ServiceName(str, Enum):
@@ -184,7 +184,7 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
         return "%s" % self.__class__.__name__
 
 
-class Disconnect(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_DISCONNECT):
+class Disconnect(BinarySshPacket, msg_type=SshMsgType.DISCONNECT):
     class ReasonCode(IntEnum):
         HOST_NOT_ALLOWED_TO_CONNECT = 1
         PROTOCOL_ERROR = 2
@@ -207,33 +207,33 @@ class Disconnect(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_DISCONNECT):
     # TODO: read RFC 3066 to decode language_tag
 
 
-class Ignore(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_IGNORE):
+class Ignore(BinarySshPacket, msg_type=SshMsgType.IGNORE):
     __slots__ = ('data',)
     _fields_type = (None,)
 
 
-class Unimplemented(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_UNIMPLEMENTED):
+class Unimplemented(BinarySshPacket, msg_type=SshMsgType.UNIMPLEMENTED):
     __slots__ = ('packet_sequence_number',)
     _fields_type = (Uint32Type())
 
 
-class Debug(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_DEBUG):
+class Debug(BinarySshPacket, msg_type=SshMsgType.DEBUG):
     __slots__ = ('always_display', 'message', 'language_tag')
     _fields_type = (BooleanType(), StringType('utf-8'), StringType('octet'))
     # TODO: read RFC 3066 to decode language_tag
 
 
-class ServiceRequest(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_SERVICE_REQUEST):
+class ServiceRequest(BinarySshPacket, msg_type=SshMsgType.SERVICE_REQUEST):
     __slots__ = ('service_name',)
     _fields_type = (StringType('ascii'),)
 
 
-class ServiceAccept(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_SERVICE_ACCEPT):
+class ServiceAccept(BinarySshPacket, msg_type=SshMsgType.SERVICE_ACCEPT):
     __slots__ = ('service_name',)
     _fields_type = (StringType('ascii'),)
 
 
-class KexInit(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_KEXINIT):
+class KexInit(BinarySshPacket, msg_type=SshMsgType.KEXINIT):
     __slots__ = ('cookie',
                  'kex_algo', 'server_host_key_algo',
                  'encryption_algo_ctos', 'encryption_algo_stoc',
@@ -256,22 +256,22 @@ class KexInit(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_KEXINIT):
         self._reserved = _reserved
 
 
-class NewKeys(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_NEWKEYS):
+class NewKeys(BinarySshPacket, msg_type=SshMsgType.NEWKEYS):
     __slots__ = ()
     _fields_type = ()
 
 
-class KexDHInit(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_KEX_ECDH_INIT):
+class KexDHInit(BinarySshPacket, msg_type=SshMsgType.KEX_ECDH_INIT):
     __slots__ = ('e',)
     _fields_type = (StringType('octet'),)
 
 
-class KexDHReply(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_KEX_ECDH_REPLY):
+class KexDHReply(BinarySshPacket, msg_type=SshMsgType.KEX_ECDH_REPLY):
     __slots__ = ('server_public_key', 'f', 'signature')
     _fields_type = (StringType('octet'), StringType('octet'), StringType('octet'))
 
 
-class UserauthRequest(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_REQUEST):
+class UserauthRequest(BinarySshPacket, msg_type=SshMsgType.USERAUTH_REQUEST):
     __slots__ = ('user_name', 'service_name', 'method_name')
     _fields_type = (StringType('utf-8'), StringType('ascii'), StringType('ascii'))
 
@@ -298,16 +298,16 @@ class UserauthRequestPassword(UserauthRequest):
         super().__init__(method_name="password", change_password=False, **kwargs)
 
 
-class UserauthFailure(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_FAILURE):
+class UserauthFailure(BinarySshPacket, msg_type=SshMsgType.USERAUTH_FAILURE):
     __slots__ = ('authentications_that_can_continue', 'partial_success')
     _fields_type = (NameListType(), BooleanType())
 
 
-class UserauthSuccess(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_SUCCESS):
+class UserauthSuccess(BinarySshPacket, msg_type=SshMsgType.USERAUTH_SUCCESS):
     __slots__ = ()
     _fields_type = ()
 
 
-class UserauthBanner(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_BANNER):
+class UserauthBanner(BinarySshPacket, msg_type=SshMsgType.USERAUTH_BANNER):
     __slots__ = ('message', 'language_tag')
     _fields_type = (StringType('utf-8'), StringType('octet'))  # TODO: read RFC 3066 to decode language_tag
