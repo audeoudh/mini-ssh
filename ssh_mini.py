@@ -1,4 +1,3 @@
-import hashlib
 import logging
 import os
 
@@ -8,6 +7,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
 import fields
+import hash_algos
 from messages import *
 from transport import Transporter
 
@@ -76,6 +76,8 @@ class SshConnection:
         if not isinstance(server_kex_ecdh, KexDHReply):
             raise Exception("not a KEXDH_REPLY packet")
 
+        kex_hash_algo = hash_algos.EcdhSha2Nistp256()  # Currently forced. TODO: make it modifiable
+
         # construct a 'public key' object from the received server public key
         curve = ec.SECP256R1()
         self._server_ephemeral_public_key = \
@@ -110,8 +112,15 @@ class SshConnection:
             host_key=server_kex_ecdh.server_public_key,
             client_exchange_value=client_kex_ecdh.e, server_exchange_value=server_kex_ecdh.f,
             shared_secret=int.from_bytes(shared_secret, 'big', signed=False))
+        key_exchange_hash = kex_hash_algo.hash(to_be_hashed.payload())
 
-        key_exchange_hash = hashlib.sha256(to_be_hashed.payload()).digest()
+        # Set the session ID:
+        # > The exchange hash H from the first key exchange is additionally
+        # > used as the session identifier [...] Once computed, the session
+        # > identifier is not changed, even if keys are later re-exchanged
+        # > [RFC4253]
+        if self._session_id is None:
+            self._session_id = key_exchange_hash
 
         # Verify server's signature
         server_public_key_iterator = server_kex_ecdh.server_public_key.__iter__()
@@ -138,7 +147,7 @@ class SshConnection:
             raise Exception("not a NEWKEYS packet")
 
         # Activate the encryption
-        self.shared_secret = shared_secret
+        self.transporter.change_keys(kex_hash_algo, shared_secret, key_exchange_hash, self.session_id)
         self.logger.info("Keys and algorithms change: ok")
 
     def _close(self):
