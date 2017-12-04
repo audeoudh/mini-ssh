@@ -22,13 +22,18 @@ class SshConnection:
         self.server_name = server_name
         self.port = port
         self.transporter = None
+        self._session_id = None
+
+    @property
+    def session_id(self):
+        """The session identifier. If the session is not currently initialized, None."""
+        return self._session_id
 
     def __enter__(self):
         # Start transport layer
         self.transporter = Transporter(self.server_name, self.port)
 
         # Compute the session identifier
-        self.session_id = os.urandom(16)
 
         # Server's ephemeral public key param
         self.point_encoded_server_epub = None
@@ -52,10 +57,11 @@ class SshConnection:
 
         # Compute some locally chosen values
         self._ephemeral_private_key = ec.generate_private_key(ec.SECP256R1, default_backend())
+        cookie = os.urandom(16)
 
         # Key Exchange Init: exchange the supported crypto algorithms
         client_kexinit = KexInit(
-            cookie=self.session_id,
+            cookie=cookie,
             kex_algo=("ecdh-sha2-nistp256",), server_host_key_algo=("ssh-rsa",),
             encryption_algo_ctos=("aes128-ctr",), encryption_algo_stoc=("aes128-ctr",),
             mac_algo_ctos=("hmac-sha2-256",), mac_algo_stoc=("hmac-sha2-256",),
