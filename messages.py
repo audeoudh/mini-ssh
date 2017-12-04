@@ -172,6 +172,45 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
         return "%s" % self.__class__.__name__
 
 
+class Disconnect(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_DISCONNECT):
+    class ReasonCode(IntEnum):
+        HOST_NOT_ALLOWED_TO_CONNECT = 1
+        PROTOCOL_ERROR = 2
+        KEY_EXCHANGE_FAILED = 3
+        RESERVED = 4
+        MAC_ERROR = 5
+        COMPRESSION_ERROR = 6
+        SERVICE_NOT_AVAILABLE = 7
+        PROTOCOL_VERSION_NOT_SUPPORTED = 8
+        HOST_KEY_NOT_VERIFIABLE = 9
+        CONNECTION_LOST = 10
+        BY_APPLICATION = 11
+        TOO_MANY_CONNECTIONS = 12
+        AUTH_CANCELLED_BY_USER = 13
+        NO_MORE_AUTH_METHODS_AVAILABLE = 14
+        ILLEGAL_USER_NAME = 15
+
+    __slots__ = ('reason_code', 'description', 'language_tag')
+    _fields_type = (Uint32Type(), StringType('utf-8'), StringType('octet'))
+    # TODO: read RFC 3066 to decode language_tag
+
+
+class Ignore(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_IGNORE):
+    __slots__ = ('data',)
+    _fields_type = (None,)
+
+
+class Unimplemented(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_UNIMPLEMENTED):
+    __slots__ = ('packet_sequence_number',)
+    _fields_type = (Uint32Type())
+
+
+class Debug(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_DEBUG):
+    __slots__ = ('always_display', 'message', 'language_tag')
+    _fields_type = (BooleanType(), StringType('utf-8'), StringType('octet'))
+    # TODO: read RFC 3066 to decode language_tag
+
+
 class KexInit(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_KEXINIT):
     __slots__ = ('cookie',
                  'kex_algo', 'server_host_key_algo',
