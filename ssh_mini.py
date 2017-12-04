@@ -1,3 +1,4 @@
+import getpass
 import logging
 import os
 
@@ -42,6 +43,7 @@ class SshConnection:
         # Start SSH connection
         self._version()
         self._key_exchange()
+        self._authenticate()
 
         return self
 
@@ -155,6 +157,55 @@ class SshConnection:
         # Activate the encryption
         self.transporter.change_keys(kex_hash_algo, shared_secret, key_exchange_hash, self.session_id)
         self.logger.info("Keys and algorithms change: ok")
+
+    def _authenticate(self):
+        """Perform the client authentication, as described in RFC 4252."""
+
+        # Request the authentication service
+        service_request = ServiceRequest(service_name=ServiceName.USERAUTH)
+        self.transporter.transmit(service_request)
+        service_accept = self.transporter.receive()
+        if not isinstance(service_accept, ServiceAccept):
+            raise Exception("not a ServiceAccept message")
+        if service_request.service_name != service_accept.service_name:
+            raise Exception("The server did not provide the expected service (%s), but provided %s instead." %
+                            (service_request.service_name, service_accept.service_name))
+        self.logger.debug("Service %s accepted by the server" % service_accept.service_name)
+
+        # Try the "none" authentication
+        userauth_request = UserauthRequestNone(
+            user_name=self.user_name,
+            service_name=ServiceName.CONNECTION)
+        self.transporter.transmit(userauth_request)
+        userauth_reply = self.transporter.receive()
+        if not isinstance(userauth_reply, (UserauthFailure, UserauthSuccess)):
+            raise Exception("Unexpected packet type here!")
+
+        if isinstance(userauth_reply, UserauthSuccess):
+            # Waw! Authentication succeed after "none" authentication! Cool!
+            return
+
+        while True:
+            # Check if we can continue the authentication with a password (currently sole authentication supported)
+            if MethodName.PASSWORD not in userauth_reply.authentications_that_can_continue:
+                raise Exception("Cannot continue authentication: password not supported by the server")
+
+            # Authenticate with the password
+            the_password = getpass.getpass(prompt='Password for %s@%s: ' % (self.user_name, self.server_name))
+            userauth_request = UserauthRequestPassword(
+                user_name=self.user_name,
+                service_name=ServiceName.CONNECTION,
+                method_name=MethodName.PASSWORD,
+                change_password=False,
+                password=the_password)
+            self.transporter.transmit(userauth_request)
+            userauth_reply = self.transporter.receive()
+            if not isinstance(userauth_reply, (UserauthFailure, UserauthSuccess)):
+                raise Exception("Unexpected packet type here!")
+
+            if isinstance(userauth_reply, UserauthSuccess):
+                # Ok. We are authenticated
+                return
 
     def _close(self):
         self.transporter.close()

@@ -211,6 +211,16 @@ class Debug(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_DEBUG):
     # TODO: read RFC 3066 to decode language_tag
 
 
+class ServiceRequest(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_SERVICE_REQUEST):
+    __slots__ = ('service_name',)
+    _fields_type = (StringType('ascii'),)
+
+
+class ServiceAccept(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_SERVICE_ACCEPT):
+    __slots__ = ('service_name',)
+    _fields_type = (StringType('ascii'),)
+
+
 class KexInit(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_KEXINIT):
     __slots__ = ('cookie',
                  'kex_algo', 'server_host_key_algo',
@@ -254,40 +264,28 @@ class UserauthRequest(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_REQU
     _fields_type = (StringType('utf-8'), StringType('ascii'), StringType('ascii'))
 
 
-class UserauthPublickeyRequestPacket(UserauthRequest):
-    # FIXME: does inheritance really works?
-    __slots__ = ('is_actual_authentication', 'public_key_algorithm_name', 'public_key_blob')
-    _fields_type = (BooleanType(), StringType('ascii'), StringType('octet'))
+class UserauthRequestNone(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_REQUEST):
+    __slots__ = ('user_name', 'service_name', 'method_name')
+    _fields_type = (StringType('utf-8'), StringType('ascii'), StringType('ascii'))
 
-    def __init__(self, user_name, service_name, is_actual_authentication, public_key_algorithm_name, public_key_blob):
-        super().__init__(user_name=user_name, service_name=service_name, method_name="publickey")
-        self.is_actual_authentication = is_actual_authentication
-        self.public_key_algorithm_name = public_key_algorithm_name
-        self.public_key_blob = public_key_blob
+    def __init__(self, method_name=None, **kwargs):
+        if method_name is not None and method_name != MethodName.NONE:
+            raise Exception("%s only supports \"%s\" method" % (self.__class__.__name__, MethodName.NONE.name))
+        super().__init__(method_name=MethodName.NONE, **kwargs)
 
-    def payload(self, private_key=None):
-        """Provide a private key and the message will be signed"""
-        message = super().payload()
-        message += self._bool_to_bytes(private_key is not None)
-        message += self._string_to_bytes(self.algo_name, encoding="ascii")
 
-        # Blob. Extract data according to the algo name
-        if self.algo_name == "ssh-rsa":
-            e, n = self.blob
-            message += self._mpint_to_bytes(e)
-            message += self._mpint_to_bytes(n)
-        else:
-            # Don't know this algorithm. Use the blob as is and hope all is normal
-            message += self._string_to_bytes(self.blob, encoding="octet")
+class UserauthRequestPassword(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_REQUEST):
+    __slots__ = ('user_name', 'service_name', 'method_name',
+                 'change_password', 'password')
+    _fields_type = (StringType('utf-8'), StringType('ascii'), StringType('ascii'),
+                    BooleanType(), StringType('utf-8'))
 
-        # Add signature
-        if private_key is not None:
-            to_be_signed = self._string_to_bytes(b"", encoding="octet")
-            to_be_signed += message
-            signature = private_key.sign(to_be_signed)
-            message += self._string_to_bytes(signature, encoding="octet")
-
-        return message
+    def __init__(self, method_name, change_password, **kwargs):
+        if method_name is not None and method_name != "password":
+            raise Exception("%s only supports \"password\" method" % self.__class__.__name__)
+        if change_password:
+            raise Exception("Changing password is currently not supported")
+        super().__init__(method_name="password", change_password=False, **kwargs)
 
 
 class UserauthFailure(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_USERAUTH_FAILURE):
