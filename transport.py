@@ -81,6 +81,7 @@ class AES128CTR_Cipher(NoneCipher):
 
 class Transporter:
     logger = logging.getLogger(__name__)
+    msg_logger = logging.getLogger(__name__ + '.msg')
 
     def __init__(self, server_name, server_port):
         self.server_port = server_port
@@ -101,7 +102,7 @@ class Transporter:
     def exchange_versions(self, client_version):
         """Send and receive the SSH protocol and software versions"""
 
-        self.logger.info("Send version")
+        self.logger.info("Send client version: %s" % client_version)
         self.socket.send((client_version + "\r\n").encode("utf-8"))
 
         self.logger.debug("Waiting for server version...")
@@ -130,6 +131,7 @@ class Transporter:
 
     def transmit(self, msg: BinarySshPacket):
         # Format packet
+        self.msg_logger.info("Outgoing %s" % msg)
         payload = msg.to_bytes(cipher_block_size=self._ctos_cipher.block_size)
         mac = self._ctos_mac_algo.compute_mac(
             self._ctos_sequence_number.to_bytes(4, 'big') + payload)
@@ -183,7 +185,7 @@ class Transporter:
 
         # Parse the packet
         ssh_packet = BinarySshPacket.from_bytes(payload)
-        self.logger.info("Received %s", ssh_packet.msg_type.name)
+        self.msg_logger.info("Incoming %s", ssh_packet)
         return ssh_packet
 
     def close(self):
