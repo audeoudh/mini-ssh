@@ -65,8 +65,8 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
 
     __slots__ = ('mac', 'message_length', 'padding_length', 'msg_type')
 
-    _fields_type = (None, # Not parsed at all
-                    None, None, None)   # Manually parsed fields
+    _field_types = (None,  # Not parsed at all
+                    None, None, None)  # Manually parsed fields
 
     packet_length_type = Uint32Type()
     padding_length_type = ByteType()
@@ -114,7 +114,7 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
             for fname, ftype in zip(
                     itertools.chain.from_iterable(getattr(cls, '__slots__', [])
                                                   for cls in reversed(msg_class.__mro__)),
-                    itertools.chain.from_iterable(getattr(cls, '_fields_type', [])
+                    itertools.chain.from_iterable(getattr(cls, '_field_types', [])
                                                   for cls in reversed(msg_class.__mro__))):
                 if ftype is not None:
                     parsed_data[fname] = ftype.from_bytes(flow_iterator)
@@ -169,7 +169,7 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
         for fname, ftype in zip(
                 itertools.chain.from_iterable(getattr(cls, '__slots__', [])
                                               for cls in reversed(self.__class__.__mro__)),
-                itertools.chain.from_iterable(getattr(cls, '_fields_type', [])
+                itertools.chain.from_iterable(getattr(cls, '_field_types', [])
                                               for cls in reversed(self.__class__.__mro__))):
             if ftype is not None:
                 message += ftype.to_bytes(self.__getattribute__(fname))
@@ -203,34 +203,34 @@ class Disconnect(BinarySshPacket, msg_type=SshMsgType.DISCONNECT):
         ILLEGAL_USER_NAME = 15
 
     __slots__ = ('reason_code', 'description', 'language_tag')
-    _fields_type = (Uint32Type(), StringType('utf-8'), StringType('octet'))
+    _field_types = (Uint32Type(), StringType('utf-8'), StringType('octet'))
     # TODO: read RFC 3066 to decode language_tag
 
 
 class Ignore(BinarySshPacket, msg_type=SshMsgType.IGNORE):
     __slots__ = ('data',)
-    _fields_type = (None,)
+    _field_types = (None,)
 
 
 class Unimplemented(BinarySshPacket, msg_type=SshMsgType.UNIMPLEMENTED):
     __slots__ = ('packet_sequence_number',)
-    _fields_type = (Uint32Type())
+    _field_types = (Uint32Type())
 
 
 class Debug(BinarySshPacket, msg_type=SshMsgType.DEBUG):
     __slots__ = ('always_display', 'message', 'language_tag')
-    _fields_type = (BooleanType(), StringType('utf-8'), StringType('octet'))
+    _field_types = (BooleanType(), StringType('utf-8'), StringType('octet'))
     # TODO: read RFC 3066 to decode language_tag
 
 
 class ServiceRequest(BinarySshPacket, msg_type=SshMsgType.SERVICE_REQUEST):
     __slots__ = ('service_name',)
-    _fields_type = (StringType('ascii'),)
+    _field_types = (StringType('ascii'),)
 
 
 class ServiceAccept(BinarySshPacket, msg_type=SshMsgType.SERVICE_ACCEPT):
     __slots__ = ('service_name',)
-    _fields_type = (StringType('ascii'),)
+    _field_types = (StringType('ascii'),)
 
 
 class KexInit(BinarySshPacket, msg_type=SshMsgType.KEXINIT):
@@ -242,7 +242,7 @@ class KexInit(BinarySshPacket, msg_type=SshMsgType.KEXINIT):
                  'languages_ctos', 'languages_stoc',
                  'first_kex_packet_follows', '_reserved')
 
-    _fields_type = (BytesType(16),
+    _field_types = (BytesType(16),
                     NameListType(), NameListType(),
                     NameListType(), NameListType(),
                     NameListType(), NameListType(),
@@ -258,27 +258,27 @@ class KexInit(BinarySshPacket, msg_type=SshMsgType.KEXINIT):
 
 class NewKeys(BinarySshPacket, msg_type=SshMsgType.NEWKEYS):
     __slots__ = ()
-    _fields_type = ()
+    _field_types = ()
 
 
 class KexDHInit(BinarySshPacket, msg_type=SshMsgType.KEX_ECDH_INIT):
     __slots__ = ('e',)
-    _fields_type = (StringType('octet'),)
+    _field_types = (StringType('octet'),)
 
 
 class KexDHReply(BinarySshPacket, msg_type=SshMsgType.KEX_ECDH_REPLY):
     __slots__ = ('server_public_key', 'f', 'signature')
-    _fields_type = (StringType('octet'), StringType('octet'), StringType('octet'))
+    _field_types = (StringType('octet'), StringType('octet'), StringType('octet'))
 
 
 class UserauthRequest(BinarySshPacket, msg_type=SshMsgType.USERAUTH_REQUEST):
     __slots__ = ('user_name', 'service_name', 'method_name')
-    _fields_type = (StringType('utf-8'), StringType('ascii'), StringType('ascii'))
+    _field_types = (StringType('utf-8'), StringType('ascii'), StringType('ascii'))
 
 
 class UserauthRequestNone(UserauthRequest):
     __slots__ = ()
-    _fields_type = ()
+    _field_types = ()
 
     def __init__(self, method_name=None, **kwargs):
         if method_name is not None and method_name != MethodName.NONE:
@@ -288,7 +288,7 @@ class UserauthRequestNone(UserauthRequest):
 
 class UserauthRequestPassword(UserauthRequest):
     __slots__ = ('change_password', 'password')
-    _fields_type = (BooleanType(), StringType('utf-8'))
+    _field_types = (BooleanType(), StringType('utf-8'))
 
     def __init__(self, method_name, change_password, **kwargs):
         if method_name is not None and method_name != "password":
@@ -300,14 +300,14 @@ class UserauthRequestPassword(UserauthRequest):
 
 class UserauthFailure(BinarySshPacket, msg_type=SshMsgType.USERAUTH_FAILURE):
     __slots__ = ('authentications_that_can_continue', 'partial_success')
-    _fields_type = (NameListType(), BooleanType())
+    _field_types = (NameListType(), BooleanType())
 
 
 class UserauthSuccess(BinarySshPacket, msg_type=SshMsgType.USERAUTH_SUCCESS):
     __slots__ = ()
-    _fields_type = ()
+    _field_types = ()
 
 
 class UserauthBanner(BinarySshPacket, msg_type=SshMsgType.USERAUTH_BANNER):
     __slots__ = ('message', 'language_tag')
-    _fields_type = (StringType('utf-8'), StringType('octet'))  # TODO: read RFC 3066 to decode language_tag
+    _field_types = (StringType('utf-8'), StringType('octet'))  # TODO: read RFC 3066 to decode language_tag

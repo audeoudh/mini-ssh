@@ -107,7 +107,7 @@ class SshConnection:
                          'client_exchange_value', 'server_exchange_value',
                          'shared_secret')
 
-            _fields_type = (StringType('ascii'), StringType('ascii'),
+            _field_types = (StringType('ascii'), StringType('ascii'),
                             StringType('octet'), StringType('octet'),
                             StringType('octet'),
                             StringType('octet'), StringType('octet'),
