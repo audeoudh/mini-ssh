@@ -120,10 +120,13 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
             message += ftype.to_bytes(self.__getattribute__(fname))
         return message
 
-    def __str__(self):
+    def __repr__(self):
         fields = ("%s=%r" % (fname, self.__getattribute__(fname)) for fname in self.__slots__)
         fields = ', '.join(fields)
         return "%s<%s>" % (self.__class__.__name__, fields)
+
+    def __str__(self):
+        return "%s" % self.__class__.__name__
 
 
 class KexInit(BinarySshPacket, msg_type=SshMsgType.SSH_MSG_KEXINIT):
