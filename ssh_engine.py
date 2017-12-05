@@ -4,7 +4,6 @@ import os
 import select
 import sys
 
-import click
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
@@ -15,7 +14,7 @@ from messages import *
 from transport import Transport
 
 
-class SshConnection:
+class SshEngine:
     logger = logging.getLogger(__name__)
 
     client_version = "SSH-2.0-python_tim&henry_1.0"
@@ -231,16 +230,16 @@ class SshConnection:
             raise Exception("Unable to open channel")
 
         # Request a pseudo-terminal
-        channel_request = ChannelRequestPTY(
-            recipient_channel=open_confirmation.sender_channel,
-            want_reply=False,
-            TERM="xterm-256color",
-            terminal_width_ch=80,
-            terminal_height_ch=24,
-            terminal_width_px=0,
-            terminal_height_px=0,
-            encoded_terminal_modes=((ChannelRequestPTY.EncodedTerminalModes.IMAXBEL, 0),))
-        self.socket.send_ssh_msg(channel_request)
+        # channel_request = ChannelRequestPTY(
+        #     recipient_channel=open_confirmation.sender_channel,
+        #     want_reply=False,
+        #     TERM="xterm-256color",
+        #     terminal_width_ch=80,
+        #     terminal_height_ch=24,
+        #     terminal_width_px=0,
+        #     terminal_height_px=0,
+        #     encoded_terminal_modes=((ChannelRequestPTY.EncodedTerminalModes.IMAXBEL, 0),))
+        # self.socket.send_ssh_msg(channel_request)
 
         # Request a shell
         channel_request = ChannelRequestShell(
@@ -258,32 +257,6 @@ class SshConnection:
                 command = ChannelData(
                     recipient_channel=open_confirmation.sender_channel,
                     data=command_str.encode('ascii'))
-                print(repr(command))
                 self.socket.send_ssh_msg(command)
             if self.socket in readable:
-                print("waiting for...")
                 print(repr(self.socket.recv_ssh_msg()))
-            print("loop")
-
-
-@click.command()
-@click.argument("remote")
-@click.option("-p", required=False, default=22)
-def main(remote, p=22):
-    parts = remote.split("@")
-    if len(parts) == 1:
-        user_name = "root"  # TODO: better to extract the username from environment
-        server_name = remote
-    elif len(parts) == 2:
-        user_name = parts[0]
-        server_name = parts[1]
-    else:
-        raise Exception("Unable to find user & server name")
-
-    with SshConnection(user_name, server_name, p) as sshc:
-        print("Established")
-
-
-if __name__ == "__main__":
-    logging.basicConfig(format="[%(levelname)s] %(message)s", level=logging.INFO)
-    main()
