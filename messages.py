@@ -311,3 +311,180 @@ class UserauthSuccess(BinarySshPacket, msg_type=SshMsgType.USERAUTH_SUCCESS):
 class UserauthBanner(BinarySshPacket, msg_type=SshMsgType.USERAUTH_BANNER):
     __slots__ = ('message', 'language_tag')
     _field_types = (StringType('utf-8'), StringType('octet'))  # TODO: read RFC 3066 to decode language_tag
+
+
+class GlobalRequest(BinarySshPacket, msg_type=SshMsgType.GLOBAL_REQUEST):
+    __slots__ = ('request_name', 'want_reply')
+    _field_types = (StringType('ascii'), BooleanType())
+
+
+class RequestSuccess(BinarySshPacket, msg_type=SshMsgType.REQUEST_SUCCESS):
+    __slots__ = ()
+    _field_types = ()
+
+
+class RequestFailure(BinarySshPacket, msg_type=SshMsgType.REQUEST_FAILURE):
+    __slots__ = ()
+    _field_types = ()
+
+
+class ChannelOpen(BinarySshPacket, msg_type=SshMsgType.CHANNEL_OPEN):
+    __slots__ = ('channel_type', 'sender_channel', 'initial_window_size', 'maximum_packet_size')
+    _field_types = (StringType('ascii'), Uint32Type(), Uint32Type(), Uint32Type())
+
+
+class ChannelOpenConfimation(BinarySshPacket, msg_type=SshMsgType.CHANNEL_OPEN_CONFIRMATION):
+    __slots__ = ('recipient_channel', 'sender_channel', 'initial_window_size', 'maximum_packet_size')
+    _field_types = (Uint32Type(), Uint32Type(), Uint32Type(), Uint32Type())
+
+
+class ChannelOpenFailure(BinarySshPacket, msg_type=SshMsgType.CHANNEL_OPEN_FAILURE):
+    class ReasonCode(int, Enum):
+        ADMINISTRATIVELY_PROHIBITED = 1
+        CONNECT_FAILED = 2
+        UNKNOWN_CHANNEL_TYPE = 3
+        RESOURCE_SHORTAGE = 4
+
+    __slots__ = ('recipient_channel', 'reason_code', 'description', 'language_tag')
+    _field_types = (Uint32Type(), Uint32Type(), StringType('utf-8'), StringType('octet'))
+
+
+class ChannelWindowAdjust(BinarySshPacket, msg_type=SshMsgType.CHANNEL_WINDOW_ADJUST):
+    __slots__ = ('recipient_channel', 'bytes_to_add')
+    _field_types = (Uint32Type(), Uint32Type())
+
+
+class ChannelData(BinarySshPacket, msg_type=SshMsgType.CHANNEL_DATA):
+    __slots__ = ('recipient_channel', 'data')
+    _field_types = (Uint32Type(), StringType('octet'))
+
+
+class ChannelExtendedData(BinarySshPacket, msg_type=SshMsgType.CHANNEL_EXTENDED_DATA):
+    class DataTypeCode(int, Enum):
+        STDERR = 1
+
+    __slots__ = ('recipient_channel', 'data_type_code', 'data')
+    _field_types = (Uint32Type(), Uint32Type(), StringType('octet'))
+
+
+class ChannelRequest(BinarySshPacket, msg_type=SshMsgType.CHANNEL_REQUEST):
+    __slots__ = ('recipient_channel', 'request_type', 'want_reply')
+    _field_types = (Uint32Type(), StringType('ascii'), BooleanType())
+
+
+class ChannelRequestPTY(ChannelRequest):
+    class EncodedTerminalModes(int, Enum):
+        TTY_OP_END = 0,  # Indicates end of options.
+        VINTR = 1,  # Interrupt character; 255 if none.  Similarly for the
+        # other characters.  Not all of these characters are supported on
+        # all systems.
+        VQUIT = 2,  # The quit character (sends SIGQUIT signal on POSIX systems).
+        VERASE = 3,  # Erase the character to left of the cursor.
+        VKILL = 4,  # Kill the current input line.
+        VEOF = 5,  # End-of-file character (sends EOF from the terminal).
+        VEOL = 6,  # End-of-line character in addition to carriage return and/or linefeed.
+        VEOL2 = 7,  # Additional end-of-line character.
+        VSTART = 8,  # Continues paused output (normally control-Q).
+        VSTOP = 9,  # Pauses output (normally control-S).
+        VSUSP = 10,  # Suspends the current program.
+        VDSUSP = 11,  # Another suspend character.
+        VREPRINT = 12,  # Reprints the current input line.
+        VWERASE = 13,  # Erases a word left of cursor.
+        VLNEXT = 14,  # Enter the next character typed literally, even if it is a special character
+        VFLUSH = 15,  # Character to flush output.
+        VSWTCH = 16,  # Switch to a different shell layer.
+        VSTATUS = 17,  # Prints system status line (load, command, pid, etc).
+        VDISCARD = 18,  # Toggles the flushing of terminal output.
+        IGNPAR = 30,  # The ignore parity flag.  The parameter SHOULD be 0 if this flag is FALSE, and 1 if it is TRUE.
+        PARMRK = 31,  # Mark parity and framing errors.
+        INPCK = 32,  # Enable checking of parity errors.
+        ISTRIP = 33,  # Strip 8th bit off characters.
+        INLCR = 34,  # Map NL into CR on input.
+        IGNCR = 35,  # Ignore CR on input.
+        ICRNL = 36,  # Map CR to NL on input.
+        IUCLC = 37,  # Translate uppercase characters to lowercase.
+        IXON = 38,  # Enable output flow control.
+        IXANY = 39,  # Any char will restart after stop.
+        IXOFF = 40,  # Enable input flow control.
+        IMAXBEL = 41,  # Ring bell on input queue full.
+        ISIG = 50,  # Enable signals INTR, QUIT, [D]SUSP.
+        ICANON = 51,  # Canonicalize input lines.
+        XCASE = 52,  # Enable input and output of uppercase characters by
+        # preceding their lowercase equivalents with "\".
+        ECHO = 53,  # Enable echoing.
+        ECHOE = 54,  # Visually erase chars.
+        ECHOK = 55,  # Kill character discards current line.
+        ECHONL = 56,  # Echo NL even if ECHO is off.
+        NOFLSH = 57,  # Don't flush after interrupt.
+        TOSTOP = 58,  # Stop background jobs from output.
+        IEXTEN = 59,  # Enable extensions.
+        ECHOCTL = 60,  # Echo control characters as ^(Char).
+        ECHOKE = 61,  # Visual erase for line kill.
+        PENDIN = 62,  # Retype pending input.
+        OPOST = 70,  # Enable output processing.
+        OLCUC = 71,  # Convert lowercase to uppercase.
+        ONLCR = 72,  # Map NL to CR-NL.
+        OCRNL = 73,  # Translate carriage return to newline (output).
+        ONOCR = 74,  # Translate newline to carriage return-newline (output).
+        ONLRET = 75,  # Newline performs a carriage return (output).
+        CS7 = 90,  # 7 bit mode.
+        CS8 = 91,  # 8 bit mode.
+        PARENB = 92,  # Parity enable.
+        PARODD = 93,  # Odd parity, else even.
+        TTY_OP_ISPEED = 128,  # Specifies the input baud rate in bits per second.
+        TTY_OP_OSPEED = 129,  # Specifies the output baud rate in bits per second.
+
+    class EncodedTerminalModeType(StringType):
+        def __init__(self):
+            super().__init__('octet')
+
+        def from_bytes(self, flow):
+            options = []
+            while True:
+                # > The stream consists of opcode-argument pairs wherein the
+                # > opcode is a byte value.
+                op_code, argument = flow.__next__(), None
+                # > The stream is terminated by opcode TTY_OP_END (0x00).
+                if op_code == ChannelRequestPTY.EncodedTerminalModes.TTY_OP_END:
+                    break
+                # > Opcodes 160 to 255 are not yet defined, and cause parsing to stop
+                elif 160 <= op_code <= 255:
+                    self.logger.warning("Detected undefined opcode %d, stop parsing" % op_code)
+                    break
+                # > Opcodes 1 to 159 have a single uint32 argument.
+                elif 1 <= op_code <= 159:
+                    argument = bytes(flow.__next__() for _ in range(4))
+                options.append((op_code, argument))
+            return options
+
+        def to_bytes(self, value):
+            flow = bytearray()
+            for op_code, argument in value:
+                flow.append(op_code)
+                flow += argument.to_bytes(4, NETWORK_BYTE_ORDER)
+            flow.append(ChannelRequestPTY.EncodedTerminalModes.TTY_OP_END)
+            return super().to_bytes(flow)
+
+    __slots__ = ('TERM',
+                 'terminal_width_ch', 'terminal_height_ch',
+                 'terminal_width_px', 'terminal_height_px',
+                 'encoded_terminal_modes')
+    _field_types = (StringType('ascii'),
+                    Uint32Type(), Uint32Type(),
+                    Uint32Type(), Uint32Type(),
+                    EncodedTerminalModeType())
+
+    def __init__(self, request_type=None, **kwargs):
+        if request_type is not None and request_type != 'pty-req':
+            raise Exception("%s only supports \"pty-req\" request type" % self.__class__.__name__)
+        super().__init__(request_type='pty-req', **kwargs)
+
+
+class ChannelRequestShell(ChannelRequest):
+    __slots__ = ()
+    _field_types = ()
+
+    def __init__(self, request_type=None, **kwargs):
+        if request_type is not None and request_type != 'shell':
+            raise Exception("%s only supports \"shell\" request type" % self.__class__.__name__)
+        super().__init__(request_type='shell', **kwargs)

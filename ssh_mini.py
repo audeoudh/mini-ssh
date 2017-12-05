@@ -1,6 +1,8 @@
 import getpass
 import logging
 import os
+import select
+import sys
 
 import click
 from cryptography.hazmat.backends import default_backend
@@ -45,6 +47,9 @@ class SshConnection:
         self._version()
         self._key_exchange()
         self._authenticate()
+        # Needed for openSSH (we currently have strong requirements for the message flow
+        _ = self.socket.recv_ssh_msg()  # GlobalRequest<request_name='hostkeys-00@openssh.com', want_reply=False>
+        self._open_channel()
 
         return self
 
@@ -210,6 +215,55 @@ class SshConnection:
 
     def _close(self):
         self.socket.close()
+
+    def _open_channel(self):
+        local_channel_identifier = 1  # Should certainly be fixed later!
+
+        # Open the channel
+        channel_open = ChannelOpen(
+            channel_type="session",
+            sender_channel=local_channel_identifier,
+            initial_window_size=2 ** 16 - 1,
+            maximum_packet_size=256)
+        self.socket.send_ssh_msg(channel_open)
+        open_confirmation = self.socket.recv_ssh_msg()
+        if isinstance(open_confirmation, ChannelOpenFailure):
+            raise Exception("Unable to open channel")
+
+        # Request a pseudo-terminal
+        channel_request = ChannelRequestPTY(
+            recipient_channel=open_confirmation.sender_channel,
+            want_reply=False,
+            TERM="xterm-256color",
+            terminal_width_ch=80,
+            terminal_height_ch=24,
+            terminal_width_px=0,
+            terminal_height_px=0,
+            encoded_terminal_modes=((ChannelRequestPTY.EncodedTerminalModes.IMAXBEL, 0),))
+        self.socket.send_ssh_msg(channel_request)
+
+        # Request a shell
+        channel_request = ChannelRequestShell(
+            recipient_channel=open_confirmation.sender_channel,
+            want_reply=False)
+        self.socket.send_ssh_msg(channel_request)
+        print(repr(self.socket.recv_ssh_msg()))  # WindowAdjust
+        print(repr(self.socket.recv_ssh_msg()))  # ExtendedData
+
+        # Send a command
+        while True:
+            readable, _, _ = select.select((self.socket, sys.stdin), (), ())
+            if sys.stdin in readable:
+                command_str = sys.stdin.readline()
+                command = ChannelData(
+                    recipient_channel=open_confirmation.sender_channel,
+                    data=command_str.encode('ascii'))
+                print(repr(command))
+                self.socket.send_ssh_msg(command)
+            if self.socket in readable:
+                print("waiting for...")
+                print(repr(self.socket.recv_ssh_msg()))
+            print("loop")
 
 
 @click.command()
