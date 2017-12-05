@@ -228,6 +228,18 @@ class SshConnection:
         if isinstance(open_confirmation, ChannelOpenFailure):
             raise Exception("Unable to open channel")
 
+        # Request a pseudo-terminal
+        channel_request = ChannelRequestPTY(
+            recipient_channel=open_confirmation.sender_channel,
+            want_reply=False,
+            TERM="xterm-256color",
+            terminal_width_ch=80,
+            terminal_height_ch=24,
+            terminal_width_px=0,
+            terminal_height_px=0,
+            encoded_terminal_modes=((ChannelRequestPTY.EncodedTerminalModes.IMAXBEL, 0),))
+        self.socket.send_ssh_msg(channel_request)
+
 
 
 @click.command()
