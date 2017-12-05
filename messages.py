@@ -326,3 +326,24 @@ class RequestSuccess(BinarySshPacket, msg_type=SshMsgType.REQUEST_SUCCESS):
 class RequestFailure(BinarySshPacket, msg_type=SshMsgType.REQUEST_FAILURE):
     __slots__ = ()
     _field_types = ()
+
+
+class ChannelOpen(BinarySshPacket, msg_type=SshMsgType.CHANNEL_OPEN):
+    __slots__ = ('channel_type', 'sender_channel', 'initial_window_size', 'maximum_packet_size')
+    _field_types = (StringType('ascii'), Uint32Type(), Uint32Type(), Uint32Type())
+
+
+class ChannelOpenConfimation(BinarySshPacket, msg_type=SshMsgType.CHANNEL_OPEN_CONFIRMATION):
+    __slots__ = ('recipient_channel', 'sender_channel', 'initial_window_size', 'maximum_packet_size')
+    _field_types = (Uint32Type(), Uint32Type(), Uint32Type(), Uint32Type())
+
+
+class ChannelOpenFailure(BinarySshPacket, msg_type=SshMsgType.CHANNEL_OPEN_FAILURE):
+    class ReasonCode(int, Enum):
+        ADMINISTRATIVELY_PROHIBITED = 1
+        CONNECT_FAILED = 2
+        UNKNOWN_CHANNEL_TYPE = 3
+        RESOURCE_SHORTAGE = 4
+
+    __slots__ = ('recipient_channel', 'reason_code', 'description', 'language_tag')
+    _field_types = (Uint32Type(), Uint32Type(), StringType('utf-8'), StringType('octet'))

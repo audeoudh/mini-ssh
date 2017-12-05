@@ -47,6 +47,7 @@ class SshConnection:
         self._authenticate()
         # Needed for openSSH (we currently have strong requirements for the message flow
         _ = self.socket.recv_ssh_msg()  # GlobalRequest<request_name='hostkeys-00@openssh.com', want_reply=False>
+        self._open_channel()
 
         return self
 
@@ -212,6 +213,21 @@ class SshConnection:
 
     def _close(self):
         self.socket.close()
+
+    def _open_channel(self):
+        local_channel_identifier = 1  # Should certainly be fixed later!
+
+        # Open the channel
+        channel_open = ChannelOpen(
+            channel_type="session",
+            sender_channel=local_channel_identifier,
+            initial_window_size=2 ** 16 - 1,
+            maximum_packet_size=256)
+        self.socket.send_ssh_msg(channel_open)
+        open_confirmation = self.socket.recv_ssh_msg()
+        if isinstance(open_confirmation, ChannelOpenFailure):
+            raise Exception("Unable to open channel")
+
 
 
 @click.command()
