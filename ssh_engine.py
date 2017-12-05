@@ -259,4 +259,9 @@ class SshEngine:
                     data=command_str.encode('ascii'))
                 self.socket.send_ssh_msg(command)
             if self.socket in readable:
-                print(repr(self.socket.recv_ssh_msg()))
+                msg = self.socket.recv_ssh_msg()
+                print(repr(msg))
+                if isinstance(msg, ChannelClose) and msg.recipient_channel == local_channel_identifier:
+                    msg = ChannelClose(recipient_channel=open_confirmation.sender_channel)
+                    self.socket.send_ssh_msg(msg)
+                    break

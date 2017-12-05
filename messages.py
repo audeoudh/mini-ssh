@@ -367,6 +367,16 @@ class ChannelExtendedData(BinarySshPacket, msg_type=SshMsgType.CHANNEL_EXTENDED_
     _field_types = (Uint32Type(), Uint32Type(), StringType('octet'))
 
 
+class ChannelEOF(BinarySshPacket, msg_type=SshMsgType.CHANNEL_EOF):
+    __slots__ = ('recipient_channel',)
+    _field_types = (Uint32Type(),)
+
+
+class ChannelClose(BinarySshPacket, msg_type=SshMsgType.CHANNEL_CLOSE):
+    __slots__ = ('recipient_channel',)
+    _field_types = (Uint32Type(),)
+
+
 class ChannelRequest(BinarySshPacket, msg_type=SshMsgType.CHANNEL_REQUEST):
     __slots__ = ('recipient_channel', 'request_type', 'want_reply')
     _field_types = (Uint32Type(), StringType('ascii'), BooleanType())
