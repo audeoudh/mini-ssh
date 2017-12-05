@@ -311,3 +311,18 @@ class UserauthSuccess(BinarySshPacket, msg_type=SshMsgType.USERAUTH_SUCCESS):
 class UserauthBanner(BinarySshPacket, msg_type=SshMsgType.USERAUTH_BANNER):
     __slots__ = ('message', 'language_tag')
     _field_types = (StringType('utf-8'), StringType('octet'))  # TODO: read RFC 3066 to decode language_tag
+
+
+class GlobalRequest(BinarySshPacket, msg_type=SshMsgType.GLOBAL_REQUEST):
+    __slots__ = ('request_name', 'want_reply')
+    _field_types = (StringType('ascii'), BooleanType())
+
+
+class RequestSuccess(BinarySshPacket, msg_type=SshMsgType.REQUEST_SUCCESS):
+    __slots__ = ()
+    _field_types = ()
+
+
+class RequestFailure(BinarySshPacket, msg_type=SshMsgType.REQUEST_FAILURE):
+    __slots__ = ()
+    _field_types = ()

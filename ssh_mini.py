@@ -45,6 +45,8 @@ class SshConnection:
         self._version()
         self._key_exchange()
         self._authenticate()
+        # Needed for openSSH (we currently have strong requirements for the message flow
+        _ = self.socket.recv_ssh_msg()  # GlobalRequest<request_name='hostkeys-00@openssh.com', want_reply=False>
 
         return self
 
