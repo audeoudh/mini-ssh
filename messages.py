@@ -354,6 +354,11 @@ class ChannelWindowAdjust(BinarySshPacket, msg_type=SshMsgType.CHANNEL_WINDOW_AD
     _field_types = (Uint32Type(), Uint32Type())
 
 
+class ChannelData(BinarySshPacket, msg_type=SshMsgType.CHANNEL_DATA):
+    __slots__ = ('recipient_channel', 'data')
+    _field_types = (Uint32Type(), StringType('octet'))
+
+
 class ChannelExtendedData(BinarySshPacket, msg_type=SshMsgType.CHANNEL_EXTENDED_DATA):
     class DataTypeCode(int, Enum):
         STDERR = 1

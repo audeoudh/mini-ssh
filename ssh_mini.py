@@ -1,6 +1,8 @@
 import getpass
 import logging
 import os
+import select
+import sys
 
 import click
 from cryptography.hazmat.backends import default_backend
@@ -247,6 +249,21 @@ class SshConnection:
         self.socket.send_ssh_msg(channel_request)
         print(repr(self.socket.recv_ssh_msg()))  # WindowAdjust
         print(repr(self.socket.recv_ssh_msg()))  # ExtendedData
+
+        # Send a command
+        while True:
+            readable, _, _ = select.select((self.socket, sys.stdin), (), ())
+            if sys.stdin in readable:
+                command_str = sys.stdin.readline()
+                command = ChannelData(
+                    recipient_channel=open_confirmation.sender_channel,
+                    data=command_str.encode('ascii'))
+                print(repr(command))
+                self.socket.send_ssh_msg(command)
+            if self.socket in readable:
+                print("waiting for...")
+                print(repr(self.socket.recv_ssh_msg()))
+            print("loop")
 
 
 @click.command()
