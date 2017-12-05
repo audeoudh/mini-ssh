@@ -349,6 +349,19 @@ class ChannelOpenFailure(BinarySshPacket, msg_type=SshMsgType.CHANNEL_OPEN_FAILU
     _field_types = (Uint32Type(), Uint32Type(), StringType('utf-8'), StringType('octet'))
 
 
+class ChannelWindowAdjust(BinarySshPacket, msg_type=SshMsgType.CHANNEL_WINDOW_ADJUST):
+    __slots__ = ('recipient_channel', 'bytes_to_add')
+    _field_types = (Uint32Type(), Uint32Type())
+
+
+class ChannelExtendedData(BinarySshPacket, msg_type=SshMsgType.CHANNEL_EXTENDED_DATA):
+    class DataTypeCode(int, Enum):
+        STDERR = 1
+
+    __slots__ = ('recipient_channel', 'data_type_code', 'data')
+    _field_types = (Uint32Type(), Uint32Type(), StringType('octet'))
+
+
 class ChannelRequest(BinarySshPacket, msg_type=SshMsgType.CHANNEL_REQUEST):
     __slots__ = ('recipient_channel', 'request_type', 'want_reply')
     _field_types = (Uint32Type(), StringType('ascii'), BooleanType())
@@ -460,3 +473,13 @@ class ChannelRequestPTY(ChannelRequest):
         if request_type is not None and request_type != 'pty-req':
             raise Exception("%s only supports \"pty-req\" request type" % self.__class__.__name__)
         super().__init__(request_type='pty-req', **kwargs)
+
+
+class ChannelRequestShell(ChannelRequest):
+    __slots__ = ()
+    _field_types = ()
+
+    def __init__(self, request_type=None, **kwargs):
+        if request_type is not None and request_type != 'shell':
+            raise Exception("%s only supports \"shell\" request type" % self.__class__.__name__)
+        super().__init__(request_type='shell', **kwargs)

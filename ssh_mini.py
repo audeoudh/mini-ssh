@@ -240,6 +240,13 @@ class SshConnection:
             encoded_terminal_modes=((ChannelRequestPTY.EncodedTerminalModes.IMAXBEL, 0),))
         self.socket.send_ssh_msg(channel_request)
 
+        # Request a shell
+        channel_request = ChannelRequestShell(
+            recipient_channel=open_confirmation.sender_channel,
+            want_reply=False)
+        self.socket.send_ssh_msg(channel_request)
+        print(repr(self.socket.recv_ssh_msg()))  # WindowAdjust
+        print(repr(self.socket.recv_ssh_msg()))  # ExtendedData
 
 
 @click.command()
