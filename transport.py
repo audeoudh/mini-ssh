@@ -8,10 +8,10 @@ from messages import BinarySshPacket
 
 
 class Transport(socket.socket):
-    """Implements all the SSH transport layer, as defined in RFC4253.
+    """Implements the entire SSH transport layer, as defined in RFC4253.
 
-    This is a socket as a TCP one, but that send & receive BinarySshPacket
-    tokens. It supports encryption & MAC verification."""
+    This class instantiates a TCP socket and sets up the transport layer for the SSH protocol. The Transport class
+    sends & receives a stream encoded as BinarySshPacket tokens. It supports encryption & MAC verification."""
 
     logger = logging.getLogger(__name__)
     msg_logger = logging.getLogger(__name__ + '.msg')

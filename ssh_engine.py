@@ -18,7 +18,7 @@ from transport import Transport
 class SshEngine:
     logger = logging.getLogger(__name__)
 
-    client_version = "SSH-2.0-python_tim&henry_1.0"
+    client_version = "SSH-2.0-python_tim&henry_0.1"
 
     def __init__(self, user_name, server_name, port=22):
         self.user_name = user_name
@@ -39,7 +39,7 @@ class SshEngine:
 
         # Compute the session identifier
 
-        # Server's ephemeral public key param
+        # Server's ephemeral public key param (used for ephemeral Diffie-Hellman key exchange)
         self.point_encoded_server_epub = None
         self.server_epub_key = None
 
@@ -63,11 +63,11 @@ class SshEngine:
         """Do a whole key exchange, as described in RFC 4253"""
         self.logger.info("Exchange key mechanism activated...")
 
-        # Compute some locally chosen values
-        self._ephemeral_private_key = ec.generate_private_key(ec.SECP256R1, default_backend())
+        # Generate a dh object for the key exchange and pick a random session cookie
+        self.dh = asym_algos.EcdhSha2Nistp256()
         cookie = os.urandom(16)
 
-        # Key Exchange Init: exchange the supported crypto algorithms
+        # Key Exchange Init: exchange the supported crypto algorithms, first algo in list is preferred one
         client_kexinit = KexInit(
             cookie=cookie,
             kex_algo=("ecdh-sha2-nistp256",), server_host_key_algo=("ssh-rsa",),
@@ -76,6 +76,7 @@ class SshEngine:
             compression_algo_ctos=("none",), compression_algo_stoc=("none",),
             languages_ctos=(), languages_stoc=(),
             first_kex_packet_follows=False)
+
         self.socket.send_ssh_msg(client_kexinit)
         server_kexinit = self.socket.recv_ssh_msg()
         if not isinstance(server_kexinit, KexInit):
