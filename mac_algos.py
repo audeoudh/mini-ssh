@@ -16,7 +16,7 @@ class MacAlgo(metaclass=abc.ABCMeta):
     def mac_length(self):
         raise NotImplementedError()
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls):
         super().__init_subclass__()
         MacAlgo.supported[cls.name] = cls
 
@@ -35,8 +35,16 @@ class NoneMAC(MacAlgo):
     """MAC of any message is empty.
 
     This is the default algorithm, when a connection is started."""
-    name = "none"
-    mac_length = 0
+    _name = "none"
+    _mac_length = 0
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def mac_length(self):
+        return self._mac_length
 
     def compute_mac(self, payload):
         return b""
@@ -46,11 +54,19 @@ class NoneMAC(MacAlgo):
 
 
 class HmacSha2_256(MacAlgo):
-    name = "hmac-sha2-256"
-    mac_length = 32
+    _name = "hmac-sha2-256"
+    _mac_length = 32
 
     def __init__(self, key):
         self.key = key
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def mac_length(self):
+        return self._mac_length
 
     def compute_mac(self, payload):
         return hmac.HMAC(self.key, payload, hashlib.sha256).digest()[:32]

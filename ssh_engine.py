@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
 import fields
 import hash_algos
+import asym_algos
 from messages import *
 from transport import Transport
 
@@ -83,22 +84,21 @@ class SshEngine:
 
         # Key Exchange Diffie-Hellman: create a shared secret
         client_kex_ecdh = KexDHInit(
-            e=self._ephemeral_private_key.public_key().public_numbers().encode_point())
+            e=asym_algos.EcdhSha2Nistp256.to_point_encoding(self.dh.client_ephemeral_public_key))
         self.socket.send_ssh_msg(client_kex_ecdh)
         server_kex_ecdh = self.socket.recv_ssh_msg()
         if not isinstance(server_kex_ecdh, KexDHReply):
             raise Exception("not a KEXDH_REPLY packet")
 
-        kex_hash_algo = hash_algos.EcdhSha2Nistp256()  # Currently forced. TODO: make it modifiable
+        kex_hash_algo = hash_algos.Sha256()  # Currently forced. TODO: make it modifiable
 
         # construct a 'public key' object from the received server public key
-        curve = ec.SECP256R1()
-        self._server_ephemeral_public_key = \
-            ec.EllipticCurvePublicNumbers.from_encoded_point(curve, server_kex_ecdh.f) \
+        self.dh.server_ephemeral_public_key = \
+            ec.EllipticCurvePublicNumbers.from_encoded_point(self.dh.curve, server_kex_ecdh.f) \
                 .public_key(default_backend())
 
         # multiply server's ephemeral public key with client's ephemeral private key --> shared secret
-        shared_secret = self._ephemeral_private_key.exchange(ec.ECDH(), self._server_ephemeral_public_key)
+        shared_secret = self.dh.compute_shared_secret()
         self.logger.info("Key Exchange Diffie-Hellman phase: ok")
 
         # Compute exchange hash
