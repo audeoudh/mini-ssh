@@ -1,10 +1,10 @@
 import argparse
+import getpass
 import logging
-
 import os
-
 import sys
 
+from messages import MethodName
 from ssh_engine import SshEngine
 
 
@@ -57,12 +57,25 @@ def cli(args=None):
     elif options.login_name is None:
         options.login_name = os.environ['USER']
 
-    main(options.login_name, hostname, options.port)
+    sys.exit(main(options.login_name, hostname, options.port))
 
 
 def main(user_name, server_name, port):
     with SshEngine(user_name, server_name, port) as sshc:
-        pass
+        # Authenticate with the password
+        while not sshc.is_authenticated() and \
+                MethodName.PASSWORD in sshc._userauth_reply.authentications_that_can_continue:
+            the_password = getpass.getpass(prompt="%s@%s's password: " % (sshc.user_name, sshc.server_name))
+            sshc.authenticate(password=the_password)
+            if not sshc.is_authenticated():
+                print("Permission denied, please try again.", file=sys.stderr)
+
+        # Should be authenticated now
+        if not sshc.is_authenticated():
+            print("%s@%s: Permission denied (%s)." %
+                  (sshc.user_name, sshc.server_name,
+                   ",".join(sshc._userauth_reply.authentications_that_can_continue)))
+            return 255
 
 
 if __name__ == '__main__':
