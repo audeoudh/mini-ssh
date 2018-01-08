@@ -19,10 +19,10 @@ def cli(args=None):
              "authentication, and configuration problems.  Multiple -v "
              "options increase the verbosity.  The maximum is 2.")
     argparser.add_argument(
-        "-p", metavar="port", default=22,
+        "-p", dest='port', default=22,
         help="Port to connect to on the remote host")
     argparser.add_argument(
-        "-l", metavar="login_name",
+        "-l", dest='login_name',
         help="Specifies the user to log in as on the remote machine")
     argparser.add_argument(
         "destination", metavar="[user@]hostname",
