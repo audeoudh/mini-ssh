@@ -172,7 +172,9 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
                 itertools.chain.from_iterable(getattr(cls, '_field_types', [])
                                               for cls in reversed(self.__class__.__mro__))):
             if ftype is not None:
-                message += ftype.to_bytes(self.__getattribute__(fname))
+                attr = getattr(self, fname)
+                if attr is not None:
+                    message += ftype.to_bytes(attr)
         return message
 
     def __repr__(self):
