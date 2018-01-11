@@ -29,6 +29,7 @@ class SshMsgType(IntEnum):
     USERAUTH_FAILURE = 51
     USERAUTH_SUCCESS = 52
     USERAUTH_BANNER = 53
+    USERAUTH_PK_OK = 60
 
     # Connection protocol
     #   Connection protocol generic
@@ -313,6 +314,11 @@ class UserauthSuccess(BinarySshPacket, msg_type=SshMsgType.USERAUTH_SUCCESS):
 class UserauthBanner(BinarySshPacket, msg_type=SshMsgType.USERAUTH_BANNER):
     __slots__ = ('message', 'language_tag')
     _field_types = (StringType('utf-8'), StringType('octet'))  # TODO: read RFC 3066 to decode language_tag
+
+
+class UserAuthPkOk(BinarySshPacket, msg_type=SshMsgType.USERAUTH_PK_OK):
+    __slots__ = ('algorithm_name', 'blob')
+    _field_types = (StringType('ascii'), StringType('octet'))
 
 
 class GlobalRequest(BinarySshPacket, msg_type=SshMsgType.GLOBAL_REQUEST):
