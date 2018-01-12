@@ -62,9 +62,10 @@ def cli(args=None):
 
 def main(user_name, server_name, port):
     with SshEngine(user_name, server_name, port) as sshc:
+
         # Authenticate with the password
         while not sshc.is_authenticated() and \
-                MethodName.PASSWORD in sshc._userauth_reply.authentications_that_can_continue:
+                sshc.is_authentication_method_supported(MethodName.PASSWORD):
             the_password = getpass.getpass(prompt="%s@%s's password: " % (sshc.user_name, sshc.server_name))
             sshc.authenticate(password=the_password)
             if not sshc.is_authenticated():

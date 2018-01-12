@@ -180,6 +180,16 @@ class SshEngine:
         if not isinstance(self._userauth_reply, (UserauthFailure, UserauthSuccess)):
             raise Exception("Unexpected packet type here!")
 
+    def is_authentication_method_supported(self, method):
+        """Check if the authentication method is supported.
+
+        If no UserauthFailure is received yet, suppose that this authentication
+        is supported. If we guess wrong, remote server will provide the needed
+        list of supported authentication methods."""
+        if self._userauth_reply is None:
+            return True  # Suppose that yes…
+        return method in self._userauth_reply.authentications_that_can_continue
+
     def authenticate(self, password=None):
         # Check if we can continue the authentication with a password (currently sole authentication supported)
         if password is not None:
