@@ -1,11 +1,22 @@
 import argparse
+import base64
 import getpass
 import logging
 import os
 import sys
 
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+
+import authentication_keys
 from messages import MethodName
 from ssh_engine import SshEngine
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_PRIVATE_KEYS = \
+    tuple(os.path.join(os.path.expanduser("~"), '.ssh', key_filename)
+          for key_filename in ('id_dsa', 'id_ecdsa', 'id_ed25519', 'id_rsa'))
 
 
 def cli(args=None):
@@ -60,8 +71,68 @@ def cli(args=None):
     sys.exit(main(options.login_name, hostname, options.port))
 
 
-def main(user_name, server_name, port):
+def main(user_name, server_name, port,
+         available_keys_filenames=DEFAULT_PRIVATE_KEYS):
     with SshEngine(user_name, server_name, port) as sshc:
+
+        # Authenticate with a key
+        for key_filename in available_keys_filenames:
+            # Check if method is supported
+            if not sshc.is_authentication_method_supported(MethodName.PUBLICKEY):
+                break
+
+            # Load public key
+            public_key_filename = key_filename + '.pub'
+            try:
+                with open(public_key_filename, 'rb') as file:
+                    algo_name, blob, comment = file.read().split(b" ", 2)
+                    algo_name = algo_name.decode('ascii')
+                    public_key_blob = base64.decodebytes(blob)
+                    comment = comment.decode('utf-8')
+            except FileNotFoundError:
+                # Ok, just no such key, normal.
+                continue
+            except PermissionError:
+                logger.warning("%s: unreadable file", public_key_filename)
+                continue
+            except IOError as e:
+                logger.warning("%s: cannot open file: %s", public_key_filename, e)
+                continue
+            try:
+                key_class = authentication_keys.AuthenticationKey.known_key_types[algo_name]
+            except IndexError:
+                logger.warning("%s: %s: unsupported key type", public_key_filename, algo_name)
+                continue
+            try:
+                key = key_class.from_public_blob(public_key_blob)
+            except ValueError:
+                logger.warning("%s: invalid %s key", public_key_filename, algo_name)
+                continue
+
+            # Test public key
+            logger.debug("Offering public key from %s", public_key_filename)
+            if not sshc.authenticate_with_public_key(key):
+                logger.info("Key in %s is refused", public_key_filename)
+                continue
+
+            # Load private key
+            logger.debug("Load private key from %s", key_filename)
+            with open(key_filename, 'rb') as file:
+                private_key_file_content = file.read()
+            try:
+                key.private_key = serialization.load_pem_private_key(
+                    private_key_file_content, password=None, backend=default_backend())
+            except TypeError:
+                passphrase = getpass \
+                    .getpass(prompt="Enter passphrase for key '%s': " % key_filename) \
+                    .encode('utf-8')
+                key.private_key = serialization.load_pem_private_key(
+                    private_key_file_content, password=passphrase, backend=default_backend())
+
+            # Authenticate with private key
+            if sshc.authenticate(private_key=key):
+                logger.info("Authentication with %s succeed", key_filename)
+                break
 
         # Authenticate with the password
         while not sshc.is_authenticated() and \
