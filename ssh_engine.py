@@ -171,6 +171,27 @@ class SshEngine:
                             (service_request.service_name, service_accept.service_name))
         self.logger.debug("Service %s accepted by the server" % service_accept.service_name)
 
+    def authenticate_with_public_key(self, public_key):
+        """Try a fake authentication with a public key, without signing the
+        message.
+
+        :return True if the an authentication with this key would be accepted by
+          the server (but is currently accepted, as we have not signed the
+          message)."""
+        if not self.is_authentication_method_supported(MethodName.PUBLICKEY):
+            return False
+        userauth_request = UserauthRequestPublicKey(
+            user_name=self.user_name,
+            service_name=ServiceName.CONNECTION,
+            method_name=MethodName.PUBLICKEY,
+            signed=False,
+            algorithm_name=public_key.algo_name,
+            blob=public_key.public_blob())
+        self.socket.send_ssh_msg(userauth_request)
+        userauth_reply = self.socket.recv_ssh_msg()
+
+        return userauth_reply.msg_type == SshMsgType.USERAUTH_PK_OK
+
     def is_authentication_method_supported(self, method):
         """Check if the authentication method is supported.
 
@@ -181,8 +202,8 @@ class SshEngine:
             return True  # Suppose that yes…
         return method in self._userauth_reply.authentications_that_can_continue
 
-    def authenticate(self, password=None):
-        # Check if we can continue the authentication with a password (currently sole authentication supported)
+    def authenticate(self, password=None, private_key=None):
+        # Compute the correct UserauthRequest
         if password is not None and \
                 self.is_authentication_method_supported(MethodName.PASSWORD):
             userauth_request = UserauthRequestPassword(
@@ -191,6 +212,17 @@ class SshEngine:
                 method_name=MethodName.PASSWORD,
                 change_password=False,
                 password=password)
+
+        elif private_key is not None and \
+                self.is_authentication_method_supported(MethodName.PUBLICKEY):
+            userauth_request = UserauthRequestPublicKey(
+                user_name=self.user_name,
+                service_name=ServiceName.CONNECTION,
+                method_name=MethodName.PUBLICKEY,
+                signed=False,
+                algorithm_name=private_key.algo_name,
+                blob=private_key.public_blob())
+            userauth_request.sign(self._session_id, private_key)
 
         else:
             userauth_request = UserauthRequestNone(
