@@ -3,7 +3,7 @@ import abc
 from asn1crypto.algos import DSASignature
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
 import fields
 
@@ -36,6 +36,33 @@ class AuthenticationKey:
     def _format_signature(self, data):
         return fields.StringType('ascii').to_bytes(self.algo_name) + \
                fields.StringType('octet').to_bytes(data)
+
+
+@AuthenticationKey.supported_algorithm("ssh-rsa")
+class Rsa(AuthenticationKey):
+    @classmethod
+    def from_public_blob(cls, blob):
+        blob = iter(blob)
+        algo_name, e, n = \
+            fields.StringType('ascii').from_bytes(blob), \
+            fields.MpintType().from_bytes(blob), \
+            fields.MpintType().from_bytes(blob)
+        pub_n = rsa.RSAPublicNumbers(e, n)
+        return cls(None, pub_n.public_key(default_backend()))
+
+    def __init__(self, private_key, public_key):
+        self.private_key = private_key
+        self.public_key = public_key
+
+    def sign(self, data):
+        return super()._format_signature(
+            self.private_key.sign(data, padding.PKCS1v15(), hashes.SHA1()))
+
+    def public_blob(self):
+        pub_n = self.public_key.public_numbers()
+        return self._format_public_blob(
+            fields.MpintType().to_bytes(pub_n.e) +
+            fields.MpintType().to_bytes(pub_n.n))
 
 
 class Ecdsa(AuthenticationKey):
