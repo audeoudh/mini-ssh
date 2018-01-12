@@ -171,15 +171,6 @@ class SshEngine:
                             (service_request.service_name, service_accept.service_name))
         self.logger.debug("Service %s accepted by the server" % service_accept.service_name)
 
-        # Try the "none" authentication
-        userauth_request = UserauthRequestNone(
-            user_name=self.user_name,
-            service_name=ServiceName.CONNECTION)
-        self.socket.send_ssh_msg(userauth_request)
-        self._userauth_reply = self.socket.recv_ssh_msg()
-        if not isinstance(self._userauth_reply, (UserauthFailure, UserauthSuccess)):
-            raise Exception("Unexpected packet type here!")
-
     def is_authentication_method_supported(self, method):
         """Check if the authentication method is supported.
 
@@ -192,22 +183,28 @@ class SshEngine:
 
     def authenticate(self, password=None):
         # Check if we can continue the authentication with a password (currently sole authentication supported)
-        if password is not None:
-
-            if MethodName.PASSWORD not in self._userauth_reply.authentications_that_can_continue:
-                raise Exception("Password authentication is not supported by the server")
-
+        if password is not None and \
+                self.is_authentication_method_supported(MethodName.PASSWORD):
             userauth_request = UserauthRequestPassword(
                 user_name=self.user_name,
                 service_name=ServiceName.CONNECTION,
                 method_name=MethodName.PASSWORD,
                 change_password=False,
                 password=password)
-            self.socket.send_ssh_msg(userauth_request)
 
-            self._userauth_reply = self.socket.recv_ssh_msg()
-            if not isinstance(self._userauth_reply, (UserauthFailure, UserauthSuccess)):
-                raise Exception("Unexpected packet type here!")
+        else:
+            userauth_request = UserauthRequestNone(
+                user_name=self.user_name,
+                service_name=ServiceName.CONNECTION)
+
+        # Send & receive authentication messages
+        self.socket.send_ssh_msg(userauth_request)
+        userauth_reply = self.socket.recv_ssh_msg()
+        if not isinstance(userauth_reply, (UserauthFailure, UserauthSuccess)):
+            raise Exception("Unexpected packet type here!")
+        self._userauth_reply = userauth_reply
+
+        return isinstance(self._userauth_reply, UserauthSuccess)
 
     def is_authenticated(self):
         return isinstance(self._userauth_reply, UserauthSuccess)
