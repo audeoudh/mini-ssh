@@ -1,6 +1,5 @@
 # Implementation of SSH messages types. See All RFCs 4251, 4252, 4253 for
 # their description.
-
 import itertools
 from enum import IntEnum, Enum
 
@@ -29,6 +28,7 @@ class SshMsgType(IntEnum):
     USERAUTH_FAILURE = 51
     USERAUTH_SUCCESS = 52
     USERAUTH_BANNER = 53
+    USERAUTH_PK_OK = 60
 
     # Connection protocol
     #   Connection protocol generic
@@ -172,7 +172,9 @@ class BinarySshPacket(metaclass=abc.ABCMeta):
                 itertools.chain.from_iterable(getattr(cls, '_field_types', [])
                                               for cls in reversed(self.__class__.__mro__))):
             if ftype is not None:
-                message += ftype.to_bytes(self.__getattribute__(fname))
+                attr = getattr(self, fname)
+                if attr is not None:
+                    message += ftype.to_bytes(attr)
         return message
 
     def __repr__(self):
@@ -298,6 +300,31 @@ class UserauthRequestPassword(UserauthRequest):
         super().__init__(method_name="password", change_password=False, **kwargs)
 
 
+class UserauthRequestPublicKey(UserauthRequest):
+    __slots__ = ('signed', 'algorithm_name',
+                 'blob', 'signature')
+    _field_types = (BooleanType(), StringType('ascii'),
+                    StringType('octet'), StringType('octet'))
+
+    def __init__(self, **kwargs):
+        kwargs['method_name'] = MethodName.PUBLICKEY
+        self.signature = None
+        super().__init__(**kwargs)
+
+    def sign(self, session_identifier, private_key):
+        to_be_signed = \
+            StringType('octet').to_bytes(session_identifier) + \
+            ByteType().to_bytes(self.msg_type) + \
+            StringType('ascii').to_bytes(self.user_name) + \
+            StringType('ascii').to_bytes(self.service_name) + \
+            StringType('ascii').to_bytes(self.method_name) + \
+            BooleanType().to_bytes(True) + \
+            StringType('ascii').to_bytes(self.algorithm_name) + \
+            StringType('octet').to_bytes(self.blob)
+        self.signature = private_key.sign(to_be_signed)
+        self.signed = True
+
+
 class UserauthFailure(BinarySshPacket, msg_type=SshMsgType.USERAUTH_FAILURE):
     __slots__ = ('authentications_that_can_continue', 'partial_success')
     _field_types = (NameListType(), BooleanType())
@@ -311,6 +338,11 @@ class UserauthSuccess(BinarySshPacket, msg_type=SshMsgType.USERAUTH_SUCCESS):
 class UserauthBanner(BinarySshPacket, msg_type=SshMsgType.USERAUTH_BANNER):
     __slots__ = ('message', 'language_tag')
     _field_types = (StringType('utf-8'), StringType('octet'))  # TODO: read RFC 3066 to decode language_tag
+
+
+class UserAuthPkOk(BinarySshPacket, msg_type=SshMsgType.USERAUTH_PK_OK):
+    __slots__ = ('algorithm_name', 'blob')
+    _field_types = (StringType('ascii'), StringType('octet'))
 
 
 class GlobalRequest(BinarySshPacket, msg_type=SshMsgType.GLOBAL_REQUEST):

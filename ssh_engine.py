@@ -1,4 +1,3 @@
-import getpass
 import logging
 import os
 import select
@@ -8,9 +7,9 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
+import asym_algos
 import fields
 import hash_algos
-import asym_algos
 from messages import *
 from transport import Transport
 
@@ -24,8 +23,10 @@ class SshEngine:
         self.user_name = user_name
         self.server_name = server_name
         self.port = port
+        self.server_version = None
         self.socket = None
         self._session_id = None
+        self._userauth_reply = None
 
     @property
     def session_id(self):
@@ -37,29 +38,23 @@ class SshEngine:
         self.socket = Transport()
         self.socket.connect((self.server_name, self.port))
 
-        # Compute the session identifier
-
-        # Server's ephemeral public key param (used for ephemeral Diffie-Hellman key exchange)
-        self.point_encoded_server_epub = None
-        self.server_epub_key = None
-
         # Start SSH connection
-        self._version()
-        self._key_exchange()
-        self._authenticate()
-        # Needed for openSSH (we currently have strong requirements for the message flow
-        _ = self.socket.recv_ssh_msg()  # GlobalRequest<request_name='hostkeys-00@openssh.com', want_reply=False>
-        self._open_channel()
+        self.version_exchange()
+        self.key_exchange()
+        self.init_authentication()
 
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._close()
+        self.close()
 
-    def _version(self):
+    def close(self):
+        self.socket.close()
+
+    def version_exchange(self):
         self.server_version = self.socket.exchange_versions(self.client_version)
 
-    def _key_exchange(self):
+    def key_exchange(self):
         """Do a whole key exchange, as described in RFC 4253"""
         self.logger.info("Exchange key mechanism activated...")
 
@@ -164,9 +159,7 @@ class SshEngine:
         self.socket.change_keys(kex_hash_algo, shared_secret, key_exchange_hash, self.session_id)
         self.logger.info("Keys and algorithms change: ok")
 
-    def _authenticate(self):
-        """Perform the client authentication, as described in RFC 4252."""
-
+    def init_authentication(self):
         # Request the authentication service
         service_request = ServiceRequest(service_name=ServiceName.USERAUTH)
         self.socket.send_ssh_msg(service_request)
@@ -178,43 +171,75 @@ class SshEngine:
                             (service_request.service_name, service_accept.service_name))
         self.logger.debug("Service %s accepted by the server" % service_accept.service_name)
 
-        # Try the "none" authentication
-        userauth_request = UserauthRequestNone(
+    def authenticate_with_public_key(self, public_key):
+        """Try a fake authentication with a public key, without signing the
+        message.
+
+        :return True if the an authentication with this key would be accepted by
+          the server (but is currently accepted, as we have not signed the
+          message)."""
+        if not self.is_authentication_method_supported(MethodName.PUBLICKEY):
+            return False
+        userauth_request = UserauthRequestPublicKey(
             user_name=self.user_name,
-            service_name=ServiceName.CONNECTION)
+            service_name=ServiceName.CONNECTION,
+            method_name=MethodName.PUBLICKEY,
+            signed=False,
+            algorithm_name=public_key.algo_name,
+            blob=public_key.public_blob())
         self.socket.send_ssh_msg(userauth_request)
         userauth_reply = self.socket.recv_ssh_msg()
-        if not isinstance(userauth_reply, (UserauthFailure, UserauthSuccess)):
-            raise Exception("Unexpected packet type here!")
 
-        if isinstance(userauth_reply, UserauthSuccess):
-            # Waw! Authentication succeed after "none" authentication! Cool!
-            return
+        return userauth_reply.msg_type == SshMsgType.USERAUTH_PK_OK
 
-        while True:
-            # Check if we can continue the authentication with a password (currently sole authentication supported)
-            if MethodName.PASSWORD not in userauth_reply.authentications_that_can_continue:
-                raise Exception("Cannot continue authentication: password not supported by the server")
+    def is_authentication_method_supported(self, method):
+        """Check if the authentication method is supported.
 
-            # Authenticate with the password
-            the_password = getpass.getpass(prompt='Password for %s@%s: ' % (self.user_name, self.server_name))
+        If no UserauthFailure is received yet, suppose that this authentication
+        is supported. If we guess wrong, remote server will provide the needed
+        list of supported authentication methods."""
+        if self._userauth_reply is None:
+            return True  # Suppose that yes…
+        return method in self._userauth_reply.authentications_that_can_continue
+
+    def authenticate(self, password=None, private_key=None):
+        # Compute the correct UserauthRequest
+        if password is not None and \
+                self.is_authentication_method_supported(MethodName.PASSWORD):
             userauth_request = UserauthRequestPassword(
                 user_name=self.user_name,
                 service_name=ServiceName.CONNECTION,
                 method_name=MethodName.PASSWORD,
                 change_password=False,
-                password=the_password)
-            self.socket.send_ssh_msg(userauth_request)
-            userauth_reply = self.socket.recv_ssh_msg()
-            if not isinstance(userauth_reply, (UserauthFailure, UserauthSuccess)):
-                raise Exception("Unexpected packet type here!")
+                password=password)
 
-            if isinstance(userauth_reply, UserauthSuccess):
-                # Ok. We are authenticated
-                return
+        elif private_key is not None and \
+                self.is_authentication_method_supported(MethodName.PUBLICKEY):
+            userauth_request = UserauthRequestPublicKey(
+                user_name=self.user_name,
+                service_name=ServiceName.CONNECTION,
+                method_name=MethodName.PUBLICKEY,
+                signed=False,
+                algorithm_name=private_key.algo_name,
+                blob=private_key.public_blob())
+            userauth_request.sign(self._session_id, private_key)
 
-    def _close(self):
-        self.socket.close()
+        else:
+            userauth_request = UserauthRequestNone(
+                user_name=self.user_name,
+                service_name=ServiceName.CONNECTION)
+
+        # Send & receive authentication messages
+        self.socket.send_ssh_msg(userauth_request)
+        userauth_reply = self.socket.recv_ssh_msg()
+        if not isinstance(userauth_reply, (UserauthFailure, UserauthSuccess)):
+            raise Exception("Unexpected packet type here!")
+        self._userauth_reply = userauth_reply
+
+        return isinstance(self._userauth_reply, UserauthSuccess)
+
+    def is_authenticated(self):
+        return isinstance(self._userauth_reply, UserauthSuccess)
 
     def _open_channel(self):
         local_channel_identifier = 1  # Should certainly be fixed later!
