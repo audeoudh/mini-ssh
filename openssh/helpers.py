@@ -32,7 +32,7 @@ def parse_known_hosts_file(filename):
     try:
         with open(filename, 'rb') as f:
             for line in f:
-                if line == b'\n' or line[0] == b'#':
+                if line == b'\n' or line.startswith(b'#'):
                     # Lines starting with ‘#’ and empty lines are ignored as comments.
                     continue
 
