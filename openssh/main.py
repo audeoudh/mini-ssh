@@ -29,6 +29,8 @@ def main(user_name, server_name, port,
     you want to avoid the whole process to stop."""
 
     with SshEngine(user_name, server_name, port) as sshc:
+        if not check_host_key(server_name, port, sshc.server_public_blob):
+            exit(255)
         authenticate(sshc, available_keys_filenames)
 
 
@@ -113,3 +115,53 @@ def authenticate_with_password(sshc):
     sshc.authenticate(password=the_password)
     if not sshc.is_authenticated():
         print("Permission denied, please try again.", file=sys.stderr)
+
+
+def check_host_key(hostname, port, public_blob,
+                   known_hosts_filenames=DEFAULT_KNOWN_HOSTS,
+                   strict_host_key_checking=DEFAULT_STRICT_HOST_KEY_CHECKING):
+    """Check if the given public key & host is known"""
+    for known_hosts_filename in known_hosts_filenames:
+        logger.debug("Scanning known keys from %s", known_hosts_filename)
+        for marker, hostname_pattern, key_type, key_blob, comment \
+                in parse_known_hosts_file(known_hosts_filename):
+            logger.log(logging.DEBUG - 1, "Scanning known key for pattern '%s'", hostname_pattern)
+            if not hostname_match_patterns(hostname, port, hostname_pattern):
+                logger.log(logging.DEBUG - 1, "Known key does not match server name")
+                continue
+
+            if public_blob != key_blob:  # FIXME: not sure this will always work
+                logger.log(logging.DEBUG - 1, "Keys does not match")
+                continue
+
+            # FIXME What about the key type?
+
+            # The key matches. Check the marker
+            if marker == Markers.REVOKED:
+                # “@revoked”, to indicate that the key contained on the line is
+                # revoked and must not ever be accepted.
+                readable_key_type = key_type.split('-')[0].upper()
+                print(
+                    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+                    "@       WARNING: REVOKED HOST KEY DETECTED!               @\n"
+                    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+                    "The %s host key for %s is marked as revoked.\n"
+                    "This could mean that a stolen key is being used to\n"
+                    "impersonate this host." % (readable_key_type, hostname),
+                    file=sys.stderr)
+                if strict_host_key_checking:
+                    print(
+                        "%s host key for %s was revoked and you have requested strict checking.\n"
+                        "Host key verification failed." % (readable_key_type, hostname),
+                        file=sys.stderr)
+                    return False
+
+            # Should we check the certificate?
+            if marker == '@cert-authority':
+                raise NotImplementedError
+
+            # If we are here, key is known and accepted
+            logger.debug("Remote matches a known host entry")
+            return True
+    # No matching key found
+    return False

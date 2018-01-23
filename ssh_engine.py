@@ -25,6 +25,7 @@ class SshEngine:
         self.port = port
         self.server_version = None
         self.socket = None
+        self.server_public_blob = None
         self._session_id = None
         self._userauth_reply = None
 
@@ -85,6 +86,7 @@ class SshEngine:
         server_kex_ecdh = self.socket.recv_ssh_msg()
         if not isinstance(server_kex_ecdh, KexDHReply):
             raise Exception("not a KEXDH_REPLY packet")
+        self.server_public_blob = server_kex_ecdh.server_public_key
 
         kex_hash_algo = hash_algos.Sha256()  # Currently forced. TODO: make it modifiable
 
