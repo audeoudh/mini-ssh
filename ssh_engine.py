@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 import asym_algos
 import fields
 import hash_algos
+from authentication_keys import AuthenticationKey
 from messages import *
 from transport import Transport
 
@@ -66,7 +67,7 @@ class SshEngine:
         # Key Exchange Init: exchange the supported crypto algorithms, first algo in list is preferred one
         client_kexinit = KexInit(
             cookie=cookie,
-            kex_algo=("ecdh-sha2-nistp256",), server_host_key_algo=("ssh-rsa",),
+            kex_algo=("ecdh-sha2-nistp256",), server_host_key_algo=tuple(AuthenticationKey.known_key_types.keys()),
             encryption_algo_ctos=("aes128-ctr",), encryption_algo_stoc=("aes128-ctr",),
             mac_algo_ctos=("hmac-sha2-256",), mac_algo_stoc=("hmac-sha2-256",),
             compression_algo_ctos=("none",), compression_algo_stoc=("none",),
