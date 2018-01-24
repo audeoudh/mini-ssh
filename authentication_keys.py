@@ -1,4 +1,5 @@
 import abc
+import base64
 
 from asn1crypto.algos import DSASignature
 from cryptography.hazmat.backends import default_backend
@@ -21,14 +22,24 @@ class AuthenticationKey:
         return decorator
 
     @classmethod
-    @abc.abstractclassmethod
-    def from_public_blob(cls, blob): ...
+    def from_blob(cls, blob):
+        # Read key type
+        l = int.from_bytes(blob[:4], 'big')
+        key_type_name = blob[4:4 + l].decode('ascii')
+        try:
+            key_type = cls.known_key_types[key_type_name]
+        except IndexError:
+            raise KeyError("Unknown key type %s" % key_type_name)
+        else:
+            return key_type.from_blob(blob)
 
     @abc.abstractmethod
-    def sign(self, data): ...
+    def sign(self, data):
+        ...
 
     @abc.abstractmethod
-    def public_blob(self): ...
+    def public_blob(self):
+        ...
 
     def _format_public_blob(self, blob):
         return fields.StringType('ascii').to_bytes(self.algo_name) + blob
@@ -41,7 +52,7 @@ class AuthenticationKey:
 @AuthenticationKey.supported_algorithm("ssh-rsa")
 class Rsa(AuthenticationKey):
     @classmethod
-    def from_public_blob(cls, blob):
+    def from_blob(cls, blob):
         blob = iter(blob)
         algo_name, e, n = \
             fields.StringType('ascii').from_bytes(blob), \
@@ -71,7 +82,7 @@ class Ecdsa(AuthenticationKey):
     hash_algo = None
 
     @classmethod
-    def from_public_blob(cls, blob):
+    def from_blob(cls, blob):
         blob = iter(blob)
         cname, algo, encoded_point = \
             fields.StringType('ascii').from_bytes(blob), \

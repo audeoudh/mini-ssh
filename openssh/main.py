@@ -72,12 +72,10 @@ def authenticate_with_key(sshc, key_filename):
         logger.warning("%s: cannot open file: %s", public_key_filename, e)
         return False
     try:
-        key_class = authentication_keys.AuthenticationKey.known_key_types[key_type]
-    except IndexError:
+        key = authentication_keys.AuthenticationKey.from_blob(key_blob)
+    except KeyError:
         logger.warning("%s: %s: unsupported key type", public_key_filename, key_type)
         return False
-    try:
-        key = key_class.from_public_blob(key_blob)
     except ValueError:
         logger.warning("%s: invalid %s key", public_key_filename, key_type)
         return False
