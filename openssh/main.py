@@ -6,6 +6,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 
 import authentication_keys
+from hash_algos import Sha256
 from messages import MethodName
 from openssh.defaults import *
 from openssh.helpers import *
@@ -29,7 +30,8 @@ def main(user_name, server_name, port,
     you want to avoid the whole process to stop."""
 
     with SshEngine(user_name, server_name, port) as sshc:
-        if not check_host_key(server_name, port, sshc.server_public_blob):
+        if not check_host_key(server_name, port, sshc):
+            print("Host key verification failed.", file=sys.stderr)
             exit(255)
         authenticate(sshc, available_keys_filenames)
 
@@ -115,51 +117,67 @@ def authenticate_with_password(sshc):
         print("Permission denied, please try again.", file=sys.stderr)
 
 
-def check_host_key(hostname, port, public_blob,
+def check_host_key(hostname, port, sshc,
                    known_hosts_filenames=DEFAULT_KNOWN_HOSTS,
                    strict_host_key_checking=DEFAULT_STRICT_HOST_KEY_CHECKING):
     """Check if the given public key & host is known"""
-    for known_hosts_filename in known_hosts_filenames:
-        logger.debug("Scanning known keys from %s", known_hosts_filename)
-        for marker, hostname_pattern, key_type, key_blob, comment \
-                in parse_known_hosts_file(known_hosts_filename):
-            logger.log(logging.DEBUG - 1, "Scanning known key for pattern '%s'", hostname_pattern)
-            if not hostname_match_patterns(hostname, port, hostname_pattern):
-                logger.log(logging.DEBUG - 1, "Known key does not match server name")
-                continue
+    marker, key_blob, comment = \
+        known_hosts_search(hostname, port, sshc.server_key, filenames=known_hosts_filenames)
+    readable_key_type = sshc.server_key.algo_name.upper()
 
-            if public_blob != key_blob:  # FIXME: not sure this will always work
-                logger.log(logging.DEBUG - 1, "Keys does not match")
-                continue
-
-            # FIXME What about the key type?
-
-            # The key matches. Check the marker
-            if marker == Markers.REVOKED:
-                # “@revoked”, to indicate that the key contained on the line is
-                # revoked and must not ever be accepted.
-                readable_key_type = key_type.split('-')[0].upper()
-                print(
-                    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
-                    "@       WARNING: REVOKED HOST KEY DETECTED!               @\n"
-                    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
-                    "The %s host key for %s is marked as revoked.\n"
-                    "This could mean that a stolen key is being used to\n"
-                    "impersonate this host." % (readable_key_type, hostname),
-                    file=sys.stderr)
-                if strict_host_key_checking:
-                    print(
-                        "%s host key for %s was revoked and you have requested strict checking.\n"
-                        "Host key verification failed." % (readable_key_type, hostname),
-                        file=sys.stderr)
-                    return False
-
-            # Should we check the certificate?
-            if marker == '@cert-authority':
-                raise NotImplementedError
-
-            # If we are here, key is known and accepted
-            logger.debug("Remote matches a known host entry")
+    if key_blob is None or sshc.server_public_key != key_blob:
+        # Key not found, or found but does not match
+        if strict_host_key_checking == 'yes':
+            print("No %s host key is known for %s and you have requested strict "
+                  "checking." % (hostname, readable_key_type),
+                  file=sys.stderr)
+            return False
+        elif strict_host_key_checking == 'ask':
+            print("The authenticity of host '%s (%s)' can't be established.\n"
+                  "%s key fingerprint is %s." %
+                  (hostname, sshc.socket.getsockname()[0], readable_key_type, sshc.server_key.fingerprint(Sha256())),
+                  file=sys.stderr)
+            response = input("Are you sure you want to continue connecting (yes/no)? ")
+            while response not in ("yes", "no"):
+                response = input("Please type 'yes' or 'no': ")
+            if response == "yes":
+                known_hosts_add_key(hostname, port, sshc.server_key, None)
+                print("Warning: Permanently added '%s' (%s) to the list of known hosts." %
+                      (hostname, readable_key_type), file=sys.stderr)
+                return True
+            return False
+        elif (strict_host_key_checking == 'accept-new' and key_blob is None) or \
+                strict_host_key_checking in ('no', 'off'):
+            # Accepted this time
+            known_hosts_add_key(hostname, port, sshc.server_key, None)
+            print("Warning: Permanently added '%s' (%s) to the list of known hosts." %
+                  (hostname, readable_key_type), file=sys.stderr)
             return True
-    # No matching key found
-    return False
+        else:
+            return False
+
+    elif marker == Markers.REVOKED:
+        # “@revoked”, to indicate that the key contained on the line is
+        # revoked and must not ever be accepted.
+        print(
+            "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+            "@       WARNING: REVOKED HOST KEY DETECTED!               @\n"
+            "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+            "The %s host key for %s is marked as revoked.\n"
+            "This could mean that a stolen key is being used to\n"
+            "impersonate this host." % (readable_key_type, hostname),
+            file=sys.stderr)
+        if strict_host_key_checking in ('no', 'off'):
+            # Not a problem for us
+            # TODO: just deactivate keyboard-based authentication
+            return True
+        print("%s host key for %s was revoked and you have requested strict checking.\n"
+              "Host key verification failed." % (readable_key_type, hostname),
+              file=sys.stderr)
+        return False
+
+    elif marker == '@cert-authority':
+        raise NotImplementedError("@cert-authority keys are not supported yet")
+
+    else:  # Correct and valid key
+        return True

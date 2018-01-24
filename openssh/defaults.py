@@ -10,4 +10,4 @@ DEFAULT_KNOWN_HOSTS = \
     (os.path.join(os.sep, "etc", "ssh", "ssh_known_hosts"),
      os.path.join(os.path.expanduser("~"), '.ssh', 'known_hosts'))
 
-DEFAULT_STRICT_HOST_KEY_CHECKING = True
+DEFAULT_STRICT_HOST_KEY_CHECKING = "ask"  # 'no', 'off', 'ask', 'accept-new', 'yes'

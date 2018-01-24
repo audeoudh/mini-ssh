@@ -2,13 +2,42 @@
 import base64
 import enum
 
+from authentication_keys import AuthenticationKey
+
 
 class Markers(str, enum.Enum):
     REVOKED = "@revoked"
     CERT_AUTHORITHY = "@cert-auhority"
 
 
-def hostname_match_patterns(hostname, port, pattern):
+def known_hosts_add_key(hostname, port, key, comment):
+    raise NotImplementedError
+
+
+def known_hosts_search(hostname, port, key, filenames):
+    """Look for an entry in one of the `files` known hosts.
+
+    :return a tuple composed of the marker, the key blob, and the comment that
+      match the given hostname, port and blob. If such entry cannot be found,
+      return another entry that matches the hostname and port, but not the blob
+      (i.e. another key for the same host)"""
+    fallback_result = None, None, None
+    blob = key.public_blob()
+    for filename in filenames:
+        for marker, hostname_pattern, key_type, key_blob, comment \
+                in parse_known_hosts_file(filename):
+            if _hostname_match_patterns(hostname, port, hostname_pattern):
+                entry_key = AuthenticationKey.from_blob(key_blob)
+                if blob == key_blob:
+                    return marker, entry_key, comment
+                else:
+                    # Maybe we will have a better result later
+                    fallback_result = marker, entry_key, comment
+    # No perfect match, return an imperfect one
+    return fallback_result
+
+
+def _hostname_match_patterns(hostname, port, pattern):
     if pattern.startswith(b"|"):
         # TODO: handle the case when hostnames are hashed
         return False
@@ -36,7 +65,15 @@ def parse_known_hosts_file(filename):
                     # Lines starting with ‘#’ and empty lines are ignored as comments.
                     continue
 
-                yield _parse_known_host_line(line.rstrip(b'\n'))
+                line = line.rstrip(b"\n")
+                if line.startswith(b"@"):
+                    marker, line = line.split(b" ", 1)
+                    marker = Markers(marker.decode('ascii'))
+                else:
+                    marker = None
+                hostnames_pattern, line = line.split(b" ", 1)
+
+                yield (marker, hostnames_pattern, *_parse_public_key_line(line))
     except FileNotFoundError:
         # No entries here
         pass
@@ -49,15 +86,9 @@ def parse_public_key_file(filename):
 
 
 def _parse_known_host_line(line):
-    if line.startswith(b"@"):
-        marker, line = line.split(b" ", 1)
-        marker = Markers(marker.decode('ascii'))
-    else:
-        marker = None
 
-    hostnames_pattern, line = line.split(b" ", 1)
 
-    return (marker, hostnames_pattern, *_parse_public_key_line(line))
+    return ()
 
 
 def _parse_public_key_line(line):
