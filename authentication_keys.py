@@ -41,6 +41,14 @@ class AuthenticationKey:
     def public_blob(self):
         ...
 
+    def fingerprint(self, hash_algo):
+        blob = self.public_blob()
+        hash_algo_name = str(hash_algo.name).upper()
+        digest = hash_algo.hash(blob)
+        digest = base64.encodebytes(digest).decode('ascii')
+        digest = digest.rstrip('\n=')
+        return "%s:%s" % (hash_algo_name, digest)
+
     def _format_public_blob(self, blob):
         return fields.StringType('ascii').to_bytes(self.algo_name) + blob
 
