@@ -1,6 +1,7 @@
 # Parsing of configuration files, public keys, private keys, etc...
 import base64
 import enum
+import logging
 
 from authentication_keys import AuthenticationKey
 
@@ -10,57 +11,67 @@ class Markers(str, enum.Enum):
     CERT_AUTHORITHY = "@cert-auhority"
 
 
-def known_hosts_add_key(hostname, port, key, comment):
-    raise NotImplementedError
+class KnownHostFile:
+    logger = logging.getLogger(__name__)
 
+    def __init__(self, filename):
+        self.filename = filename
+        self.entries = []
+        self._parse()
 
-def known_hosts_search(hostname, port, key, filenames):
-    """Look for an entry in one of the `files` known hosts.
+    def search(self, key, hostname, port=22):
+        """Look for an entry in one of the `files` known hosts.
 
-    :return a tuple composed of the marker, the key blob, and the comment that
-      match the given hostname, port and blob. If such entry cannot be found,
-      return another entry that matches the hostname and port, but not the blob
-      (i.e. another key for the same host)"""
-    fallback_result = None, None, None
-    blob = key.public_blob()
-    for filename in filenames:
-        for marker, hostname_pattern, key_type, key_blob, comment \
-                in parse_known_hosts_file(filename):
-            if _hostname_match_patterns(hostname, port, hostname_pattern):
-                entry_key = AuthenticationKey.from_blob(key_blob)
-                if blob == key_blob:
-                    return marker, entry_key, comment
-                else:
-                    # Maybe we will have a better result later
-                    fallback_result = marker, entry_key, comment
-    # No perfect match, return an imperfect one
-    return fallback_result
+        :return (None, None, None) if not found; else, a tuple:
+          - markers for this key
+          - hostname pattern that matched the hostname & port
+          - the key found in known hosts file"""
+        for entry_markers, entry_hostname_pattern, entry_key in self.entries:
+            if key == entry_key and \
+                    self._hostname_match_patterns(hostname, port, entry_hostname_pattern):
+                return entry_markers, entry_hostname_pattern, entry_key
+        return None, None, None
 
+    def add_key(self, key, hostname, port=22, comment=None):
+        """Add an host as known host"""
+        if (key, hostname, port) not in self:
+            if port != 22:
+                hostname = "[%s]:%d" % (hostname, port)
 
-def _hostname_match_patterns(hostname, port, pattern):
-    if pattern.startswith(b"|"):
-        # TODO: handle the case when hostnames are hashed
-        return False
-    else:
-        patterns = pattern.decode('ascii').split(",")
-        # TODO: support *, !, ports, etc…
-        return hostname in patterns
+            blob = base64.b64encode(key.public_blob()).decode('ascii')
+            line = [hostname, key.algo_name, blob]
+            if comment is not None:
+                line.append(comment)
+            line = " ".join(line)
 
+            with open(self.filename, 'ab') as khf:
+                khf.write(line.encode('ascii'))
 
-def parse_known_hosts_file(filename):
-    """Yield all entries of the given known_host file
+            self.entries.append((None, hostname, key))
 
-    An entry holds five fields:
-    * the marker (@revoked, @cert-authority or None)
-    * the list of hostname patterns
-    * the key type
-    * the public key blob
-    * a comment (possibly None as it is optional).
+    def contains(self, key, hostname, port=22):
+        return self.search(key, hostname, port) != (None, None, None)
 
-    Empty and comment lines are ignored."""
-    try:
-        with open(filename, 'rb') as f:
+    def __contains__(self, item):
+        """Accessor for `contains`.  `item` is a tuple of all three args of this method."""
+        return self.contains(*item)
+
+    def _parse(self):
+        """Parse all entries in the known-hosts file.
+
+        An entry have five fields:
+        * the marker (@revoked, @cert-authority or None)
+        * the list of hostname patterns
+        * the key type
+        * the public key blob
+        * a comment (possibly None as it is optional).
+
+        Empty and comment lines are ignored."""
+        self.logger.info("Parsing known-hosts file '%s'", self.filename)
+        with open(self.filename, 'rb') as f:
+            line_no = 0
             for line in f:
+                line_no += 1
                 if line == b'\n' or line.startswith(b'#'):
                     # Lines starting with ‘#’ and empty lines are ignored as comments.
                     continue
@@ -71,27 +82,39 @@ def parse_known_hosts_file(filename):
                     marker = Markers(marker.decode('ascii'))
                 else:
                     marker = None
-                hostnames_pattern, line = line.split(b" ", 1)
+                hostname_pattern, line = line.split(b" ", 1)
 
-                yield (marker, hostnames_pattern, *_parse_public_key_line(line))
-    except FileNotFoundError:
-        # No entries here
-        pass
+                self.logger.debug("Found a public key for '%s'", hostname_pattern)
+
+                line_fields = line.split(b" ", 2)
+                key_type = line_fields.pop(0).decode('ascii')
+                key_blob = base64.decodebytes(line_fields.pop(0))
+                try:
+                    comment = line_fields.pop(0).decode('utf-8')
+                except IndexError:
+                    comment = None  # No comment on this line
+
+                key = AuthenticationKey.from_blob(key_blob, comment)
+                if key.algo_name != key_type:
+                    self.logger.warning("Key for '%s' (line %d) is a '%s' key, but is declared as '%s'",
+                                        hostname_pattern, line_no, key.algo_name, key_type)
+
+                self.entries.append((marker, hostname_pattern, key))
+
+    def _hostname_match_patterns(self, hostname, port, pattern):
+        if pattern.startswith(b"|"):
+            # TODO: handle the case when hostnames are hashed
+            return False
+        else:
+            patterns = pattern.decode('ascii').split(",")
+            # TODO: support *, !, ports, etc…
+            return hostname in patterns
 
 
 def parse_public_key_file(filename):
     """Parse a public key file and return the found fields"""
     with open(filename, 'rb') as f:
-        return _parse_public_key_line(f.readline())
-
-
-def _parse_known_host_line(line):
-
-
-    return ()
-
-
-def _parse_public_key_line(line):
+        line = f.readline()
     fields = line.split(b" ", 2)
     keytype = fields.pop(0).decode('ascii')
     key_blob = base64.decodebytes(fields.pop(0))
@@ -100,4 +123,9 @@ def _parse_public_key_line(line):
     except IndexError:
         comment = None  # No comment on this line
 
-    return keytype, key_blob, comment
+    key = AuthenticationKey.from_blob(key_blob)
+
+    if key.algo_name != keytype:
+        logging.warning(f"Key in {filename} do not use its declared algorithm!")
+
+    return key.algo_name, key_blob, comment

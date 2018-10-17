@@ -1,6 +1,5 @@
 import argparse
 import logging
-import os
 import sys
 
 from openssh.main import main

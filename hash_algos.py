@@ -25,7 +25,6 @@ class HashAlgo(metaclass=abc.ABCMeta):
 
 
 class Sha256(HashAlgo):
-
     _name = "sha256"
     _digest_length = 32
 
@@ -39,4 +38,3 @@ class Sha256(HashAlgo):
 
     def hash(self, data):
         return hashlib.sha256(data).digest()
-

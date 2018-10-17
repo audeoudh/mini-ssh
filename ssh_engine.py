@@ -183,6 +183,7 @@ class SshEngine:
           message)."""
         if not self.is_authentication_method_supported(MethodName.PUBLICKEY):
             return False
+
         userauth_request = UserauthRequestPublicKey(
             user_name=self.user_name,
             service_name=ServiceName.CONNECTION,

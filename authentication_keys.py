@@ -12,17 +12,22 @@ import fields
 class AuthenticationKey:
     algo_name = None
     known_key_types = {}
+    comment = None
+
+    def __init__(self, comment):
+        self.comment = comment
 
     @staticmethod
     def supported_algorithm(algo_name):
         def decorator(cls):
             AuthenticationKey.known_key_types[algo_name] = cls
             cls.algo_name = algo_name
+            return cls
 
         return decorator
 
     @classmethod
-    def from_blob(cls, blob):
+    def from_blob(cls, blob, comment=None):
         # Read key type
         l = int.from_bytes(blob[:4], 'big')
         key_type_name = blob[4:4 + l].decode('ascii')
@@ -31,7 +36,7 @@ class AuthenticationKey:
         except IndexError:
             raise KeyError("Unknown key type %s" % key_type_name)
         else:
-            return key_type.from_blob(blob)
+            return key_type.from_blob(blob, comment)
 
     @abc.abstractmethod
     def sign(self, data):
@@ -60,16 +65,17 @@ class AuthenticationKey:
 @AuthenticationKey.supported_algorithm("ssh-rsa")
 class Rsa(AuthenticationKey):
     @classmethod
-    def from_blob(cls, blob):
+    def from_blob(cls, blob, comment=None):
         blob = iter(blob)
         algo_name, e, n = \
             fields.StringType('ascii').from_bytes(blob), \
             fields.MpintType().from_bytes(blob), \
             fields.MpintType().from_bytes(blob)
         pub_n = rsa.RSAPublicNumbers(e, n)
-        return cls(None, pub_n.public_key(default_backend()))
+        return cls(None, pub_n.public_key(default_backend()), comment)
 
-    def __init__(self, private_key, public_key):
+    def __init__(self, private_key, public_key, comment):
+        super().__init__(comment)
         self.private_key = private_key
         self.public_key = public_key
 
@@ -83,6 +89,11 @@ class Rsa(AuthenticationKey):
             fields.MpintType().to_bytes(pub_n.e) +
             fields.MpintType().to_bytes(pub_n.n))
 
+    def __eq__(self, other):
+        if not isinstance(other, Rsa):
+            return NotImplemented
+        return self.public_key.public_numbers() == other.public_key.public_numbers()
+
 
 class Ecdsa(AuthenticationKey):
     curve_name = None
@@ -90,16 +101,17 @@ class Ecdsa(AuthenticationKey):
     hash_algo = None
 
     @classmethod
-    def from_blob(cls, blob):
+    def from_blob(cls, blob, comment=None):
         blob = iter(blob)
         cname, algo, encoded_point = \
             fields.StringType('ascii').from_bytes(blob), \
             fields.StringType('ascii').from_bytes(blob), \
             fields.StringType('octet').from_bytes(blob)
         pub_n = ec.EllipticCurvePublicNumbers.from_encoded_point(cls.curve, encoded_point)
-        return cls(None, pub_n.public_key(default_backend()))
+        return cls(None, pub_n.public_key(default_backend()), comment)
 
-    def __init__(self, private_key, public_key):
+    def __init__(self, private_key, public_key, comment=None):
+        super().__init__(comment)
         self.private_key = private_key
         self.public_key = public_key
 

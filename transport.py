@@ -70,7 +70,10 @@ class Transport(socket.socket):
 
         :param msg: The SSH message to be sent"""
         # Format packet
-        self.msg_logger.info("Outgoing %s" % msg)
+        if self.msg_logger.isEnabledFor(logging.DEBUG):
+            self.msg_logger.debug("Outgoing %r" % msg)
+        else:
+            self.msg_logger.info("Outgoing %s" % msg)
         payload = msg.to_bytes(cipher_block_size=self._ctos_cipher.block_size)
         mac = self._ctos_mac_algo.compute_mac(
             self._ctos_sequence_number.to_bytes(4, 'big') + payload)
@@ -131,7 +134,10 @@ class Transport(socket.socket):
 
         # Parse the packet
         ssh_packet = BinarySshPacket.from_bytes(payload)
-        self.msg_logger.info("Incoming %s", ssh_packet)
+        if self.msg_logger.isEnabledFor(logging.DEBUG):
+            self.msg_logger.debug("Incoming %r", ssh_packet)
+        else:
+            self.msg_logger.info("Incoming %s", ssh_packet)
         return ssh_packet
 
     def change_keys(self, kex_hash_algo, shared_secret, key_exchange_hash, session_id):
