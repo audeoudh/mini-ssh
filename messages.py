@@ -216,7 +216,7 @@ class Ignore(BinarySshPacket, msg_type=SshMsgType.IGNORE):
 
 class Unimplemented(BinarySshPacket, msg_type=SshMsgType.UNIMPLEMENTED):
     __slots__ = ('packet_sequence_number',)
-    _field_types = (Uint32Type())
+    _field_types = (Uint32Type(),)
 
 
 class Debug(BinarySshPacket, msg_type=SshMsgType.DEBUG):

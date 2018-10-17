@@ -125,7 +125,7 @@ def check_host_key(hostname, port, sshc,
         known_hosts_search(hostname, port, sshc.server_key, filenames=known_hosts_filenames)
     readable_key_type = sshc.server_key.algo_name.upper()
 
-    if key_blob is None or sshc.server_public_key != key_blob:
+    if key_blob is None or sshc.server_key.public_blob() != key_blob.public_blob():
         # Key not found, or found but does not match
         if strict_host_key_checking == 'yes':
             print("No %s host key is known for %s and you have requested strict "
