@@ -1,3 +1,21 @@
+# Copyright 2018 Henry-Joseph Audéoud & Timothy Claeys
+#
+# This file is part of mini-ssh.
+#
+# mini-ssh is free software: you can redistribute it and/or modify it
+# under the terms of the GNU Lesser General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# mini-ssh is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with mini-ssh.  If not, see
+# <https://www.gnu.org/licenses/>.
+
 import logging
 import os
 import select
@@ -93,8 +111,7 @@ class SshEngine:
 
         # construct a 'public key' object from the received server public key
         self.dh.server_ephemeral_public_key = \
-            ec.EllipticCurvePublicNumbers.from_encoded_point(self.dh.curve, server_kex_ecdh.f) \
-                .public_key(default_backend())
+            ec.EllipticCurvePublicKey.from_encoded_point(self.dh.curve, server_kex_ecdh.f)
 
         # multiply server's ephemeral public key with client's ephemeral private key --> shared secret
         shared_secret = self.dh.compute_shared_secret()

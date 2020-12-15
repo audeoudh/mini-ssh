@@ -1,3 +1,21 @@
+# Copyright 2018 Henry-Joseph Audéoud & Timothy Claeys
+#
+# This file is part of mini-ssh.
+#
+# mini-ssh is free software: you can redistribute it and/or modify it
+# under the terms of the GNU Lesser General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# mini-ssh is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with mini-ssh.  If not, see
+# <https://www.gnu.org/licenses/>.
+
 # Parsing of configuration files, public keys, private keys, etc...
 import base64
 import enum
@@ -27,6 +45,8 @@ class KnownHostFile:
           - hostname pattern that matched the hostname & port
           - the key found in known hosts file"""
         for entry_markers, entry_hostname_pattern, entry_key in self.entries:
+            if entry_hostname_pattern.startswith(b"delos"):
+                breakpoint()
             if key == entry_key and \
                     self._hostname_match_patterns(hostname, port, entry_hostname_pattern):
                 return entry_markers, entry_hostname_pattern, entry_key
@@ -102,6 +122,7 @@ class KnownHostFile:
                 self.entries.append((marker, hostname_pattern, key))
 
     def _hostname_match_patterns(self, hostname, port, pattern):
+        breakpoint()
         if pattern.startswith(b"|"):
             # TODO: handle the case when hostnames are hashed
             return False

@@ -1,3 +1,21 @@
+# Copyright 2018 Henry-Joseph Audéoud & Timothy Claeys
+#
+# This file is part of mini-ssh.
+#
+# mini-ssh is free software: you can redistribute it and/or modify it
+# under the terms of the GNU Lesser General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# mini-ssh is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with mini-ssh.  If not, see
+# <https://www.gnu.org/licenses/>.
+
 import abc
 import base64
 
@@ -33,8 +51,8 @@ class AuthenticationKey:
         key_type_name = blob[4:4 + l].decode('ascii')
         try:
             key_type = cls.known_key_types[key_type_name]
-        except IndexError:
-            raise KeyError("Unknown key type %s" % key_type_name)
+        except LookupError:
+            raise KeyError("Unknown key type %s" % key_type_name) from None
         else:
             return key_type.from_blob(blob, comment)
 
@@ -107,8 +125,8 @@ class Ecdsa(AuthenticationKey):
             fields.StringType('ascii').from_bytes(blob), \
             fields.StringType('ascii').from_bytes(blob), \
             fields.StringType('octet').from_bytes(blob)
-        pub_n = ec.EllipticCurvePublicNumbers.from_encoded_point(cls.curve, encoded_point)
-        return cls(None, pub_n.public_key(default_backend()), comment)
+        pub_key = ec.EllipticCurvePublicKey.from_encoded_point(cls.curve, encoded_point)
+        return cls(None, pub_key, comment)
 
     def __init__(self, private_key, public_key, comment=None):
         super().__init__(comment)

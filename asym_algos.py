@@ -1,6 +1,25 @@
+# Copyright 2018 Henry-Joseph Audéoud & Timothy Claeys
+#
+# This file is part of mini-ssh.
+#
+# mini-ssh is free software: you can redistribute it and/or modify it
+# under the terms of the GNU Lesser General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# mini-ssh is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with mini-ssh.  If not, see
+# <https://www.gnu.org/licenses/>.
+
 import abc
 
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import dh, ec
 
 
@@ -53,7 +72,8 @@ class EcdhSha2Nistp256(KeyExchange):
 
     @classmethod
     def to_point_encoding(cls, key):
-        return key.public_numbers().encode_point()
+        return key.public_bytes(serialization.Encoding.X962,
+                                serialization.PublicFormat.UncompressedPoint)
 
     @property
     def name(self):
@@ -65,7 +85,3 @@ class EcdhSha2Nistp256(KeyExchange):
 
     def compute_shared_secret(self):
         return self._client_ephemeral_private_key.exchange(ec.ECDH(), self.server_ephemeral_public_key)
-
-
-
-
